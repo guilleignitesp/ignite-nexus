@@ -43,9 +43,7 @@ export function LoginForm({ locale }: LoginFormProps) {
       return
     }
 
-    // El servidor determinará el rol y redirigirá al dashboard correcto
     router.push(`/${locale}/auth/callback`)
-    router.refresh()
   }
 
   return (
