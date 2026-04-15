@@ -1,10 +1,11 @@
 {
   "permissions": {
-    "additionalDirectories": [
-      "C:\\Users\\guill\\Desktop\\ignite-nexus\\src\\app\\[locale]\\(admin)\\admin\\students"
-    ],
     "allow": [
       "Bash(NODE_OPTIONS=\"--max-old-space-size=4096\" npx tsc --noEmit)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\guill\\Desktop\\ignite-nexus\\src\\app\\[locale]\\(admin)\\admin\\students",
+      "C:\\Users\\guill\\Desktop\\ignite-nexus\\src\\app\\[locale]\\(admin)\\admin"
     ]
   }
 }
