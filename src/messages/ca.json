@@ -1,0 +1,167 @@
+{
+  "common": {
+    "loading": "Carregant...",
+    "error": "S'ha produït un error",
+    "save": "Desar",
+    "cancel": "Cancel·lar",
+    "confirm": "Confirmar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "add": "Afegir",
+    "back": "Tornar",
+    "search": "Cercar",
+    "filter": "Filtrar",
+    "noResults": "Sense resultats",
+    "active": "Actiu",
+    "inactive": "Inactiu",
+    "yes": "Sí",
+    "no": "No"
+  },
+  "auth": {
+    "login": "Iniciar sessió",
+    "logout": "Tancar sessió",
+    "email": "Correu electrònic",
+    "password": "Contrasenya",
+    "loginButton": "Entrar",
+    "loginError": "Correu o contrasenya incorrectes",
+    "welcomeBack": "Benvingut de nou"
+  },
+  "nav": {
+    "language": "Idioma"
+  },
+  "roles": {
+    "admin": "Administrador",
+    "worker": "Professor",
+    "student": "Alumne",
+    "switchToAdmin": "Vista admin",
+    "switchToTeacher": "Vista professor"
+  },
+  "teacher": {
+    "home": "Inici",
+    "groups": "Els meus grups",
+    "planning": "Planificacions",
+    "attendance": "Assistència",
+    "timesheet": "Fitxatge",
+    "absences": "Absències",
+    "resources": "Recursos",
+    "projectMaps": "Mapes de projectes",
+    "students": "Alumnes",
+    "currentProject": "Projecte actual",
+    "sessions": "Sessions"
+  },
+  "admin": {
+    "dashboard": "Dashboard",
+    "schools": "Escoles i grups",
+    "teachers": "Professors",
+    "students": "Alumnes",
+    "projects": "Projectes",
+    "skills": "Habilitats",
+    "projectMaps": "Mapes de projectes",
+    "validation": "Validació",
+    "sessionsDashboard": "Dashboard de sessions",
+    "enrollments": "Altes i baixes",
+    "resources": "Recursos globals",
+    "attitudes": "Accions actitudinals",
+    "timesheet": "Fitxatge",
+    "absences": "Absències",
+    "stock": "Stock",
+    "settings": "Configuració"
+  },
+  "student": {
+    "home": "El meu perfil",
+    "level": "Nivell",
+    "xp": "XP",
+    "branches": "Branques STEAM",
+    "completedProjects": "Projectes completats",
+    "achievements": "Assoliments",
+    "currentProject": "Projecte en curs"
+  },
+  "school": {
+    "school": "Centre",
+    "schools": "Centres",
+    "group": "Grup",
+    "groups": "Grups",
+    "addSchool": "Afegir centre",
+    "addGroup": "Afegir grup",
+    "students": "alumnes",
+    "teachers": "professors"
+  },
+  "session": {
+    "session": "Sessió",
+    "sessions": "Sessions",
+    "date": "Data",
+    "startTime": "Hora inici",
+    "endTime": "Hora fi",
+    "status": {
+      "pending": "Pendent",
+      "completed": "Completada",
+      "suspended": "Suspesa",
+      "holiday": "Festiu"
+    },
+    "trafficLight": {
+      "label": "Semàfor",
+      "green": "Molt bé",
+      "yellow": "Bé",
+      "orange": "Regular",
+      "red": "Malament"
+    },
+    "comment": "Comentari del professor",
+    "attendance": "Assistència",
+    "projectFinished": "S'ha finalitzat el projecte?",
+    "saveSession": "Desar sessió"
+  },
+  "project": {
+    "project": "Projecte",
+    "projects": "Projectes",
+    "addProject": "Crear projecte",
+    "name": "Nom",
+    "description": "Descripció",
+    "material": "Material",
+    "recommendedHours": "Hores recomanades",
+    "skills": "Habilitats",
+    "resources": "Recursos",
+    "status": {
+      "active": "Actiu",
+      "inactive": "Inactiu"
+    }
+  },
+  "evaluation": {
+    "title": "Avaluació del projecte",
+    "multiplier": "Multiplicador XP",
+    "save": "Desar avaluació",
+    "xpAwarded": "XP atorgat"
+  },
+  "timesheet": {
+    "checkIn": "Entrada",
+    "checkOut": "Sortida",
+    "duration": "Duració",
+    "reportError": "Reportar error",
+    "status": {
+      "in": "Dins",
+      "out": "Fora"
+    }
+  },
+  "absence": {
+    "absence": "Absència",
+    "absences": "Absències",
+    "requestAbsence": "Sol·licitar absència",
+    "reason": "Motiu",
+    "startDate": "Data inici",
+    "endDate": "Data fi",
+    "comment": "Comentari",
+    "attachment": "Arxiu adjunt",
+    "status": {
+      "pending": "Pendent",
+      "approved": "Aprovada",
+      "rejected": "Rebutjada"
+    }
+  },
+  "stock": {
+    "item": "Material",
+    "items": "Material",
+    "location": "Ubicació",
+    "movement": "Moviment",
+    "currentHolder": "Responsable actual",
+    "moveItem": "Moure material"
+  }
+}

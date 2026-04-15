@@ -1,0 +1,167 @@
+{
+  "common": {
+    "loading": "Cargando...",
+    "error": "Ha ocurrido un error",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "confirm": "Confirmar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "add": "Añadir",
+    "back": "Volver",
+    "search": "Buscar",
+    "filter": "Filtrar",
+    "noResults": "Sin resultados",
+    "active": "Activo",
+    "inactive": "Inactivo",
+    "yes": "Sí",
+    "no": "No"
+  },
+  "auth": {
+    "login": "Iniciar sesión",
+    "logout": "Cerrar sesión",
+    "email": "Correo electrónico",
+    "password": "Contraseña",
+    "loginButton": "Entrar",
+    "loginError": "Correo o contraseña incorrectos",
+    "welcomeBack": "Bienvenido de nuevo"
+  },
+  "nav": {
+    "language": "Idioma"
+  },
+  "roles": {
+    "admin": "Administrador",
+    "worker": "Profesor",
+    "student": "Alumno",
+    "switchToAdmin": "Vista admin",
+    "switchToTeacher": "Vista profesor"
+  },
+  "teacher": {
+    "home": "Inicio",
+    "groups": "Mis grupos",
+    "planning": "Planificaciones",
+    "attendance": "Asistencia",
+    "timesheet": "Fichaje",
+    "absences": "Ausencias",
+    "resources": "Recursos",
+    "projectMaps": "Mapas de proyectos",
+    "students": "Alumnos",
+    "currentProject": "Proyecto actual",
+    "sessions": "Sesiones"
+  },
+  "admin": {
+    "dashboard": "Dashboard",
+    "schools": "Escuelas y grupos",
+    "teachers": "Profesores",
+    "students": "Alumnos",
+    "projects": "Proyectos",
+    "skills": "Habilidades",
+    "projectMaps": "Mapas de proyectos",
+    "validation": "Validación",
+    "sessionsDashboard": "Dashboard de sesiones",
+    "enrollments": "Altas y bajas",
+    "resources": "Recursos globales",
+    "attitudes": "Acciones actitudinales",
+    "timesheet": "Fichaje",
+    "absences": "Ausencias",
+    "stock": "Stock",
+    "settings": "Configuración"
+  },
+  "student": {
+    "home": "Mi perfil",
+    "level": "Nivel",
+    "xp": "XP",
+    "branches": "Ramas STEAM",
+    "completedProjects": "Proyectos completados",
+    "achievements": "Logros",
+    "currentProject": "Proyecto en curso"
+  },
+  "school": {
+    "school": "Centro",
+    "schools": "Centros",
+    "group": "Grupo",
+    "groups": "Grupos",
+    "addSchool": "Añadir centro",
+    "addGroup": "Añadir grupo",
+    "students": "alumnos",
+    "teachers": "profesores"
+  },
+  "session": {
+    "session": "Sesión",
+    "sessions": "Sesiones",
+    "date": "Fecha",
+    "startTime": "Hora inicio",
+    "endTime": "Hora fin",
+    "status": {
+      "pending": "Pendiente",
+      "completed": "Completada",
+      "suspended": "Suspendida",
+      "holiday": "Festivo"
+    },
+    "trafficLight": {
+      "label": "Semáforo",
+      "green": "Muy bien",
+      "yellow": "Bien",
+      "orange": "Regular",
+      "red": "Mal"
+    },
+    "comment": "Comentario del profesor",
+    "attendance": "Asistencia",
+    "projectFinished": "¿Se ha finalizado el proyecto?",
+    "saveSession": "Guardar sesión"
+  },
+  "project": {
+    "project": "Proyecto",
+    "projects": "Proyectos",
+    "addProject": "Crear proyecto",
+    "name": "Nombre",
+    "description": "Descripción",
+    "material": "Material",
+    "recommendedHours": "Horas recomendadas",
+    "skills": "Habilidades",
+    "resources": "Recursos",
+    "status": {
+      "active": "Activo",
+      "inactive": "Inactivo"
+    }
+  },
+  "evaluation": {
+    "title": "Evaluación del proyecto",
+    "multiplier": "Multiplicador XP",
+    "save": "Guardar evaluación",
+    "xpAwarded": "XP otorgado"
+  },
+  "timesheet": {
+    "checkIn": "Entrada",
+    "checkOut": "Salida",
+    "duration": "Duración",
+    "reportError": "Reportar error",
+    "status": {
+      "in": "Dentro",
+      "out": "Fuera"
+    }
+  },
+  "absence": {
+    "absence": "Ausencia",
+    "absences": "Ausencias",
+    "requestAbsence": "Solicitar ausencia",
+    "reason": "Motivo",
+    "startDate": "Fecha inicio",
+    "endDate": "Fecha fin",
+    "comment": "Comentario",
+    "attachment": "Archivo adjunto",
+    "status": {
+      "pending": "Pendiente",
+      "approved": "Aprobada",
+      "rejected": "Rechazada"
+    }
+  },
+  "stock": {
+    "item": "Material",
+    "items": "Material",
+    "location": "Ubicación",
+    "movement": "Movimiento",
+    "currentHolder": "Responsable actual",
+    "moveItem": "Mover material"
+  }
+}

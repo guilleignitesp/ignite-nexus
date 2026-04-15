@@ -1,0 +1,167 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "save": "Save",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "back": "Back",
+    "search": "Search",
+    "filter": "Filter",
+    "noResults": "No results",
+    "active": "Active",
+    "inactive": "Inactive",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "auth": {
+    "login": "Log in",
+    "logout": "Log out",
+    "email": "Email",
+    "password": "Password",
+    "loginButton": "Sign in",
+    "loginError": "Incorrect email or password",
+    "welcomeBack": "Welcome back"
+  },
+  "nav": {
+    "language": "Language"
+  },
+  "roles": {
+    "admin": "Administrator",
+    "worker": "Teacher",
+    "student": "Student",
+    "switchToAdmin": "Admin view",
+    "switchToTeacher": "Teacher view"
+  },
+  "teacher": {
+    "home": "Home",
+    "groups": "My groups",
+    "planning": "Planning",
+    "attendance": "Attendance",
+    "timesheet": "Time tracking",
+    "absences": "Absences",
+    "resources": "Resources",
+    "projectMaps": "Project maps",
+    "students": "Students",
+    "currentProject": "Current project",
+    "sessions": "Sessions"
+  },
+  "admin": {
+    "dashboard": "Dashboard",
+    "schools": "Schools & groups",
+    "teachers": "Teachers",
+    "students": "Students",
+    "projects": "Projects",
+    "skills": "Skills",
+    "projectMaps": "Project maps",
+    "validation": "Validation",
+    "sessionsDashboard": "Sessions dashboard",
+    "enrollments": "Enrollments",
+    "resources": "Global resources",
+    "attitudes": "Attitude actions",
+    "timesheet": "Time tracking",
+    "absences": "Absences",
+    "stock": "Stock",
+    "settings": "Settings"
+  },
+  "student": {
+    "home": "My profile",
+    "level": "Level",
+    "xp": "XP",
+    "branches": "STEAM branches",
+    "completedProjects": "Completed projects",
+    "achievements": "Achievements",
+    "currentProject": "Current project"
+  },
+  "school": {
+    "school": "School",
+    "schools": "Schools",
+    "group": "Group",
+    "groups": "Groups",
+    "addSchool": "Add school",
+    "addGroup": "Add group",
+    "students": "students",
+    "teachers": "teachers"
+  },
+  "session": {
+    "session": "Session",
+    "sessions": "Sessions",
+    "date": "Date",
+    "startTime": "Start time",
+    "endTime": "End time",
+    "status": {
+      "pending": "Pending",
+      "completed": "Completed",
+      "suspended": "Suspended",
+      "holiday": "Holiday"
+    },
+    "trafficLight": {
+      "label": "Traffic light",
+      "green": "Very good",
+      "yellow": "Good",
+      "orange": "Fair",
+      "red": "Poor"
+    },
+    "comment": "Teacher comment",
+    "attendance": "Attendance",
+    "projectFinished": "Was the project finished?",
+    "saveSession": "Save session"
+  },
+  "project": {
+    "project": "Project",
+    "projects": "Projects",
+    "addProject": "Create project",
+    "name": "Name",
+    "description": "Description",
+    "material": "Material",
+    "recommendedHours": "Recommended hours",
+    "skills": "Skills",
+    "resources": "Resources",
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    }
+  },
+  "evaluation": {
+    "title": "Project evaluation",
+    "multiplier": "XP multiplier",
+    "save": "Save evaluation",
+    "xpAwarded": "XP awarded"
+  },
+  "timesheet": {
+    "checkIn": "Check in",
+    "checkOut": "Check out",
+    "duration": "Duration",
+    "reportError": "Report error",
+    "status": {
+      "in": "Clocked in",
+      "out": "Clocked out"
+    }
+  },
+  "absence": {
+    "absence": "Absence",
+    "absences": "Absences",
+    "requestAbsence": "Request absence",
+    "reason": "Reason",
+    "startDate": "Start date",
+    "endDate": "End date",
+    "comment": "Comment",
+    "attachment": "Attachment",
+    "status": {
+      "pending": "Pending",
+      "approved": "Approved",
+      "rejected": "Rejected"
+    }
+  },
+  "stock": {
+    "item": "Item",
+    "items": "Items",
+    "location": "Location",
+    "movement": "Movement",
+    "currentHolder": "Current holder",
+    "moveItem": "Move item"
+  }
+}
