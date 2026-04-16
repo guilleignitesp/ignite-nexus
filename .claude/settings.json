@@ -4,7 +4,8 @@
       "Bash(NODE_OPTIONS=\"--max-old-space-size=4096\" npx tsc --noEmit)",
       "Bash(node -e ' *)",
       "Bash(node -e \"const en = require\\('./src/messages/en.json'\\); console.log\\(JSON.stringify\\(en.school, null, 2\\)\\)\")",
-      "Bash(NODE_OPTIONS=\"--max-old-space-size=4096\" npm run build)"
+      "Bash(NODE_OPTIONS=\"--max-old-space-size=4096\" npm run build)",
+      "Bash(xargs ls *)"
     ],
     "additionalDirectories": [
       "C:\\Users\\guill\\Desktop\\ignite-nexus\\src\\app\\[locale]\\(admin)\\admin\\students",
