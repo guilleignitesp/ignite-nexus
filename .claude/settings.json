@@ -8,7 +8,8 @@
     ],
     "additionalDirectories": [
       "C:\\Users\\guill\\Desktop\\ignite-nexus\\src\\app\\[locale]\\(admin)\\admin\\students",
-      "C:\\Users\\guill\\Desktop\\ignite-nexus\\src\\app\\[locale]\\(admin)\\admin"
+      "C:\\Users\\guill\\Desktop\\ignite-nexus\\src\\app\\[locale]\\(admin)\\admin",
+      "c:\\Users\\guill\\Desktop\\ignite-nexus\\src\\app\\[locale]\\(admin)\\admin\\project-maps"
     ]
   }
 }
