@@ -14,6 +14,7 @@
 6. [Sistema de caché](#6-sistema-de-caché)
 7. [Convenciones de nombrado](#7-convenciones-de-nombrado)
 8. [Flujo completo de una petición](#8-flujo-completo-de-una-petición)
+9. [Módulos construidos](#9-módulos-construidos)
 
 ---
 
@@ -720,3 +721,158 @@ Ejemplo: **Admin hace clic en "Ver perfil" de un alumno**.
 **Total de queries Supabase para cargar la página:** 2 (getUserProfile + getStudentProfile)  
 **Para la mutación:** 2 (getUserProfile [cacheado] + update)  
 **Re-render tras mutación:** mismas 2 queries del paso 5-6
+
+---
+
+## 9. Módulos construidos
+
+Todos los módulos del panel de administración completados hasta la fecha, con su ruta, descripción y archivos principales.
+
+---
+
+### Dashboard
+
+**Ruta:** `/admin/dashboard`  
+**Descripción:** Página de bienvenida del administrador. Muestra el nombre de la plataforma y el año escolar activo. Punto de entrada tras login.
+
+| Capa | Archivos |
+|------|---------|
+| Página | `src/app/[locale]/(admin)/admin/dashboard/page.tsx` |
+| Datos | `src/lib/data/settings.ts` — `getSettings()`, `getSchoolYears()` |
+
+---
+
+### Configuración
+
+**Ruta:** `/admin/settings`  
+**Descripción:** Gestión del nombre de la plataforma y ciclos de años escolares. Permite crear un nuevo año escolar, activar uno existente y cerrar el curso actual.
+
+| Capa | Archivos |
+|------|---------|
+| Página | `src/app/[locale]/(admin)/admin/settings/page.tsx` |
+| Datos | `src/lib/data/settings.ts` — `getSettings()`, `getSchoolYears()` |
+| Acciones | `src/lib/actions/settings.ts` — `updatePlatformName`, `createSchoolYear`, `activateSchoolYear`, `closeCourse` |
+| Componentes | `src/components/admin/settings/PlatformNameForm.tsx`, `SchoolYearsSection.tsx`, `CreateSchoolYearDialog.tsx`, `CloseCourseDialog.tsx` |
+
+---
+
+### Escuelas y grupos
+
+**Rutas:** `/admin/schools` · `/admin/schools/groups/[groupId]`  
+**Descripción:** Listado de escuelas con sus grupos. Permite crear escuelas y grupos. La vista de detalle de grupo muestra horario semanal y profesores asignados, con edición inline.
+
+| Capa | Archivos |
+|------|---------|
+| Páginas | `src/app/[locale]/(admin)/admin/schools/page.tsx`, `.../groups/[groupId]/page.tsx` |
+| Datos | `src/lib/data/schools.ts` — `getSchoolsWithGroups()`, `getGroupDetail()`, `getActiveWorkers()` |
+| Acciones | `src/lib/actions/schools.ts` — `createSchool`, `createGroup` |
+| Componentes | `src/components/admin/schools/SchoolsList.tsx`, `AddSchoolDialog.tsx`, `AddGroupDialog.tsx` |
+
+---
+
+### Profesores
+
+**Rutas:** `/admin/teachers` · `/admin/teachers/[workerId]`  
+**Descripción:** Listado paginado de profesores con búsqueda. Vista de detalle con gestión de permisos granulares por módulo (can_view / can_edit) y activación/desactivación de cuenta.
+
+| Capa | Archivos |
+|------|---------|
+| Páginas | `src/app/[locale]/(admin)/admin/teachers/page.tsx`, `.../[workerId]/page.tsx` |
+| Datos | `src/lib/data/teachers.ts` — `getWorkersPage()`, `getWorkerProfile()` |
+| Acciones | `src/lib/actions/teachers.ts` — `createWorker`, `toggleWorkerStatus`, `upsertModulePermission`, `setSuperAdmin` |
+| Componentes | `src/components/admin/teachers/TeachersList.tsx`, `AddTeacherDialog.tsx`, `PermissionsGrid.tsx` |
+
+---
+
+### Alumnos
+
+**Rutas:** `/admin/students` · `/admin/students/[studentId]`  
+**Descripción:** Listado paginado de alumnos con búsqueda por nombre/email/grupo. Vista de detalle con trayectoria de XP, historial de evaluaciones (con multiplicador editable), log de actitudes y grupos actuales.
+
+| Capa | Archivos |
+|------|---------|
+| Páginas | `src/app/[locale]/(admin)/admin/students/page.tsx`, `.../[studentId]/page.tsx` |
+| Datos | `src/lib/data/students.ts` — `getStudentsPage()` (RPC), `getStudentProfile()` |
+| Acciones | `src/lib/actions/students.ts` — `updateStudent`, `toggleStudentStatus`, `updateEvaluationMultiplier` |
+| Componentes | `src/components/admin/students/StudentsList.tsx`, `EditStudentDialog.tsx`, `GroupsCard.tsx`, `XPTrajectory.tsx`, `EvaluationHistory.tsx`, `AttitudeLog.tsx` |
+
+---
+
+### Altas/Bajas
+
+**Ruta:** `/admin/enrollments`  
+**Descripción:** Panel de gestión de matrículas. Muestra estadísticas del año activo, actividad reciente (altas y bajas), carga masiva via CSV y herramienta de desactivación masiva.
+
+| Capa | Archivos |
+|------|---------|
+| Página | `src/app/[locale]/(admin)/admin/enrollments/page.tsx` |
+| Datos | `src/lib/data/enrollments.ts` — `getEnrollmentStats()` (RPC), `getRecentEnrollments()`, `getRecentLeaves()`, `getActiveGroups()` |
+| Acciones | `src/lib/actions/enrollments.ts` — `bulkEnroll`, `bulkDeactivate` |
+| Componentes | `src/components/admin/enrollments/EnrollmentStats.tsx`, `RecentActivity.tsx`, `CSVUploadTool.tsx`, `BulkDeactivateTool.tsx` |
+
+---
+
+### Habilidades
+
+**Ruta:** `/admin/skills`  
+**Descripción:** Árbol de ramas y habilidades del catálogo curricular. Permite crear, editar y reordenar ramas y habilidades. Datos cacheados con `public_read` (catálogo estático).
+
+| Capa | Archivos |
+|------|---------|
+| Página | `src/app/[locale]/(admin)/admin/skills/page.tsx` |
+| Datos | `src/lib/data/skills.ts` — `getBranchesWithSkills()` |
+| Acciones | `src/lib/actions/skills.ts` — `createBranch`, `updateBranch`, `createSkill`, `updateSkill` |
+| Componentes | `src/components/admin/skills/SkillsView.tsx`, `EditBranchDialog.tsx`, `SkillDialog.tsx` |
+
+---
+
+### Proyectos
+
+**Ruta:** `/admin/projects`  
+**Descripción:** Catálogo de proyectos didácticos. Permite crear y editar proyectos con nombre, descripción, tipo de material, horas recomendadas y habilidades asociadas. Datos cacheados.
+
+| Capa | Archivos |
+|------|---------|
+| Página | `src/app/[locale]/(admin)/admin/projects/page.tsx` |
+| Datos | `src/lib/data/projects.ts` — `getProjectsList()` |
+| Acciones | `src/lib/actions/projects.ts` — `createProject`, `updateProject` |
+| Componentes | `src/components/admin/projects/ProjectsList.tsx`, `ProjectDialog.tsx` |
+
+---
+
+### Mapas de proyectos
+
+**Rutas:** `/admin/project-maps` · `/admin/project-maps/[mapId]`  
+**Descripción:** Editor visual de itinerarios curriculares basado en grafos dirigidos (`@xyflow/react`). Permite crear mapas, añadir proyectos como nodos, conectarlos con aristas dirigidas, marcar el proyecto inicial y aplicar auto-layout BFS. Los mapas se guardan en DB con patrón delete-and-reinsert.
+
+| Capa | Archivos |
+|------|---------|
+| Páginas | `src/app/[locale]/(admin)/admin/project-maps/page.tsx`, `.../[mapId]/page.tsx` |
+| Datos | `src/lib/data/project-maps.ts` — `getProjectMapsList()` (cached), `getProjectMapDetail()` (live) |
+| Acciones | `src/lib/actions/project-maps.ts` — `createProjectMap`, `saveProjectMap`, `toggleProjectMapStatus` |
+| Componentes | `src/components/admin/project-maps/MapsList.tsx`, `CreateMapDialog.tsx`, `MapEditor.tsx` |
+
+**Notas técnicas:**
+- `nodeTypes` definido fuera del componente para evitar recreación en cada render
+- Auto-layout implementado con BFS topológico propio (sin dependencias como dagre)
+- `onSelectionChange` como prop de `<ReactFlow>` (no el hook, que requiere estar dentro del provider)
+- CSS de React Flow importado con `import '@xyflow/react/dist/style.css'`
+
+---
+
+### Validación
+
+**Ruta:** `/admin/validation`  
+**Descripción:** Panel de validación de asignaciones de proyectos realizadas por profesores. Muestra todas las entradas de `planning_project_log` con filtros por estado, escuela, grupo y profesor. Al seleccionar una fila se abre un panel lateral con la trayectoria de sesiones del grupo para verificar coherencia pedagógica. El admin puede validar la asignación o cambiarla a otro proyecto.
+
+| Capa | Archivos |
+|------|---------|
+| Página | `src/app/[locale]/(admin)/admin/validation/page.tsx` |
+| Datos | `src/lib/data/validation.ts` — `getValidationList()` (FK disambiguation con `workers!assigned_by`, `workers!validated_by`) |
+| Acciones | `src/lib/actions/validation.ts` — `getSessionTrajectory()` (server action que devuelve datos), `validateAssignment()`, `changeProjectAssignment()` |
+| Componentes | `src/components/admin/validation/ValidationList.tsx`, `ValidationPanel.tsx` |
+
+**Notas técnicas:**
+- Filtrado en memoria en el cliente (volumen acotado para colas de validación)
+- `getSessionTrajectory` es un Server Action que retorna datos, llamado con `useEffect` desde el cliente para carga lazy
+- Diseño split-panel: lista `flex-1` + panel fijo `w-[400px]` cuando hay ítem seleccionado

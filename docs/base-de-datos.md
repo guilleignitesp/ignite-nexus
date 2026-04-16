@@ -250,7 +250,12 @@ Relación M:N entre proyectos y habilidades. Define qué habilidades evalúa un 
 #### `project_maps` y `project_map_nodes` y `project_map_edges`
 Mapas curriculares que organizan proyectos con dependencias (grafo dirigido).
 
-**`project_maps`**: id, name, description, is_active, created_at  
+**`project_maps`**: id, name, description, is_active, initial_project_id, created_at
+
+| Campo extra | Tipo | Descripción |
+|-------------|------|-------------|
+| `initial_project_id` | uuid FK → projects.id ON DELETE SET NULL | Proyecto inicial del mapa (añadido en migración 009) |
+
 **`project_map_nodes`**: id, map_id, project_id — `UNIQUE(map_id, project_id)`  
 **`project_map_edges`**: id, map_id, from_project_id, to_project_id — `UNIQUE(map_id, from, to)`
 
@@ -830,6 +835,14 @@ Cualquier petición, con o sin autenticación, puede leer estas tablas. Necesari
 | `group_schedule` | Anon | Module(schools) |
 | `group_assignments` | Anon | Module(schools) |
 | `workers` | Anon | Module(teachers) |
+| `branches` | Anon | — (solo seed inicial) |
+| `skills` | Anon | Module(skills) |
+| `projects` | Anon | Module(projects) |
+| `project_resources` | Anon | Module(projects) |
+| `project_skills` | Anon | Module(projects) |
+| `project_maps` | Anon | Module(project_maps) |
+| `project_map_nodes` | Anon | Module(project_maps) |
+| `project_map_edges` | Anon | Module(project_maps) |
 
 ---
 
@@ -840,20 +853,14 @@ Requieren sesión de Supabase.
 | Tabla | Lectura | Escritura |
 |-------|---------|-----------|
 | `group_enrollments` | Auth | Module(enrollments) |
-| `branches` | Auth | — (solo seed) |
-| `skills` | Auth | — (futuro: Module(skills)) |
 | `level_thresholds` | Auth | — (solo seed) |
-| `projects` | Auth | — (futuro: Module(projects)) |
-| `project_resources` | Auth | — |
-| `project_skills` | Auth | — |
-| `project_maps` | Auth | — |
-| `project_map_nodes` | Auth | — |
-| `project_map_edges` | Auth | — |
 | `attitude_actions` | Auth | — |
 | `absence_reasons` | Auth | — |
-| `platform_settings` | Auth | SuperAdmin |
 | `global_resources` | Auth (is_active=true) | — |
 | `stock_locations` | Auth | — |
+| `plannings` | Auth | — |
+| `planning_project_log` | Auth | Module(validation) |
+| `sessions` | Auth | — |
 
 ---
 
@@ -939,6 +946,62 @@ group_enrollments:
 
 students:
   INSERT → enrollments_insert_students  WITH CHECK (can_manage('enrollments'))
+```
+
+#### Migración 007 — Habilidades y ramas STEAM
+```
+branches:
+  DROP   → authenticated_read_all       [eliminada la política temporal de 001]
+  SELECT → public_read                  USING (true)
+  ↳ Motivo: unstable_cache con cliente público necesita acceso anónimo
+
+skills:
+  DROP   → authenticated_read_all       [eliminada la política temporal de 001]
+  SELECT → public_read                  USING (true)
+  ALL    → skills_write                 USING (can_manage('skills'))
+```
+
+#### Migración 008 — Banco de proyectos
+```
+projects, project_resources, project_skills:
+  DROP   → authenticated_read_all       [eliminada la política temporal de 001]
+  SELECT → public_read                  USING (true)
+  ALL    → projects_write               USING (can_manage('projects'))
+
+project_maps, project_map_nodes, project_map_edges:
+  DROP   → authenticated_read_all       [eliminada la política temporal de 001]
+  SELECT → public_read                  USING (true)
+  ALL    → projects_write               USING (can_manage('projects'))
+  ↳ NOTA: migración 009 reemplaza esta política por project_maps_write
+```
+
+#### Migración 009 — Mapas de proyectos (separación de módulo)
+```
+project_maps, project_map_nodes, project_map_edges:
+  DROP   → projects_write               [eliminada la política de 008]
+  ALL    → project_maps_write           USING (can_manage('project_maps'))
+  ↳ Motivo: project_maps es un módulo independiente en el sidebar,
+    con permisos distintos a 'projects'
+
+project_maps:
+  ALTER TABLE ADD COLUMN initial_project_id uuid FK → projects.id ON DELETE SET NULL
+  ↳ Indica el primer proyecto que debe trabajar un grupo al entrar al mapa
+```
+
+#### Migración 010 — Validación de asignaciones
+```
+plannings:
+  SELECT → authenticated_read_all   USING (auth.role() = 'authenticated')
+
+planning_project_log:
+  SELECT → authenticated_read_all   USING (auth.role() = 'authenticated')
+  ALL    → validation_write         USING (can_manage('validation'))
+  ↳ Permite a validadores aprobar, cambiar o reasignar proyectos asignados por profesores
+
+sessions:
+  SELECT → authenticated_read_all   USING (auth.role() = 'authenticated')
+  ↳ Solo lectura: las sesiones las gestiona el módulo de sesiones (futuro)
+  ↳ Necesario para cargar la trayectoria de sesiones en el panel de validación
 ```
 
 ---
