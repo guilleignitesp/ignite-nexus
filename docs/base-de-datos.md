@@ -578,12 +578,14 @@ Recursos compartidos visibles para distintos roles/grupos/escuelas.
 | `id` | uuid PK | — |
 | `title` | text NOT NULL | — |
 | `url` | text NOT NULL | — |
-| `type` | text | Tipo de recurso |
-| `visibility_role` | text | null = todos, o 'worker'/'student' |
-| `visibility_group_id` | uuid FK → groups.id ON DELETE SET NULL | null = todos los grupos |
-| `visibility_school_id` | uuid FK → schools.id ON DELETE SET NULL | null = todos los centros |
+| `resource_type` | text | Tipo de recurso (añadido en migración 013) |
+| `target_role` | text | null = todos los roles, 'worker' = solo profesores, 'student' = solo alumnos (añadido en migración 013) |
+| `visible_to_type` | text | null = sin filtro de scope, 'school' = filtrar por escuela, 'group' = filtrar por grupo |
+| `visible_to_id` | uuid | ID de la escuela o grupo (polimórfico, según `visible_to_type`) |
 | `is_active` | boolean NOT NULL default true | — |
 | `created_at` | timestamptz NOT NULL default now() | — |
+
+**Nota de diseño:** La visibilidad tiene dos dimensiones independientes: `target_role` para filtrar por tipo de usuario, y `visible_to_type`/`visible_to_id` para filtrar por scope organizativo (escuela o grupo). Ambas pueden combinarse.
 
 ---
 
@@ -856,7 +858,7 @@ Requieren sesión de Supabase.
 | `level_thresholds` | Auth | — (solo seed) |
 | `attitude_actions` | Auth | — |
 | `absence_reasons` | Auth | — |
-| `global_resources` | Auth (is_active=true) | — |
+| `global_resources` | Worker (RLS por rol+scope), Admin | Module(resources) |
 | `stock_locations` | Auth | — |
 | `plannings` | Auth | — |
 | `planning_project_log` | Auth | Module(validation) |
@@ -1002,6 +1004,72 @@ sessions:
   SELECT → authenticated_read_all   USING (auth.role() = 'authenticated')
   ↳ Solo lectura: las sesiones las gestiona el módulo de sesiones (futuro)
   ↳ Necesario para cargar la trayectoria de sesiones en el panel de validación
+```
+
+#### Migración 011 — Sesiones del profesor
+```
+Nueva función: get_my_worker_id()
+  RETURNS uuid SECURITY DEFINER
+  ↳ Devuelve el workers.id del usuario autenticado actual
+  ↳ Usada en políticas RLS de sesiones, fichajes y ausencias para identificar al profesor
+
+sessions:
+  INSERT → worker_insert_session       WITH CHECK (planning_id en plannings del worker)
+  UPDATE → worker_update_own_session   USING (sesión pertenece al worker actual + no consolidada)
+
+session_attendances:
+  INSERT/UPDATE → worker_manage_attendance  USING (sesión pertenece al worker actual)
+
+Índice único añadido: sessions (planning_id, session_date, start_time)
+  ↳ Evita dobles inserciones de sesión para el mismo bloque horario
+```
+
+#### Migración 012 — RRHH: fichajes y ausencias
+```
+timesheets:
+  SELECT → worker_read_own_timesheets  USING (worker_id = get_my_worker_id())
+  INSERT → worker_insert_timesheets    WITH CHECK (worker_id = get_my_worker_id())
+  SELECT → admin_read_timesheets       USING (is_admin())
+  ↳ El profesor solo ve y crea sus propios fichajes
+
+absences:
+  SELECT → worker_read_own_absences    USING (worker_id = get_my_worker_id())
+  INSERT → worker_insert_own_absences  WITH CHECK (worker_id = get_my_worker_id() AND status = 'pending')
+  SELECT → admin_read_absences         USING (is_admin())
+  UPDATE → admin_update_absence_status USING (is_admin())
+  ↳ El profesor solo puede insertar solicitudes con status='pending'
+  ↳ Solo el admin puede cambiar el estado (aprobar/rechazar)
+```
+
+#### Migración 013 — Recursos globales
+```
+global_resources:
+  ALTER TABLE ADD COLUMN resource_type text
+  ALTER TABLE ADD COLUMN target_role text
+  ↳ Añade dimensión de filtro por rol (null/'worker'/'student')
+  ↳ La visibilidad polimórfica (visible_to_type + visible_to_id) ya existía
+
+  DROP   → authenticated_read_all       [eliminada política genérica de 001]
+
+  SELECT → worker_read_visible_resources  USING (
+    is_active = true
+    AND (target_role IS NULL OR target_role = 'worker')
+    AND (
+      visible_to_type IS NULL
+      OR (visible_to_type = 'school' AND EXISTS(
+            group_assignments JOIN groups WHERE worker = get_my_worker_id()
+            AND g.school_id = visible_to_id
+          ))
+      OR (visible_to_type = 'group' AND EXISTS(
+            group_assignments WHERE worker = get_my_worker_id()
+            AND group_id = visible_to_id
+          ))
+    )
+  )
+  ↳ El profesor solo ve recursos activos de su rol + scope de su escuela/grupo
+
+  ALL    → admin_manage_resources       USING (can_manage('resources'))
+  ↳ El admin con módulo 'resources' puede crear, editar y desactivar
 ```
 
 ---

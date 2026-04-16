@@ -77,12 +77,19 @@ ignite-nexus/
 │
 ├── supabase/
 │   └── migrations/                # Migraciones SQL numeradas y acumulativas
-│       ├── 001_initial_schema.sql # Todas las tablas + RLS habilitado + datos iniciales
-│       ├── 002_rls_settings.sql   # Políticas para platform_settings y school_years
-│       ├── 003_rls_schools.sql    # Políticas para schools, groups, workers (lectura)
-│       ├── 004_rls_teachers.sql   # Políticas para workers (escritura) y admin_permissions
-│       ├── 005_rls_students.sql   # Políticas para students, XP, evaluaciones + función search_students_page
-│       └── 006_rls_enrollments.sql # Políticas para group_enrollments + función get_enrollment_stats
+│       ├── 001_initial_schema.sql  # Todas las tablas + RLS habilitado + datos iniciales
+│       ├── 002_rls_settings.sql    # Políticas para platform_settings y school_years
+│       ├── 003_rls_schools.sql     # Políticas para schools, groups, workers (lectura)
+│       ├── 004_rls_teachers.sql    # Políticas para workers (escritura) y admin_permissions
+│       ├── 005_rls_students.sql    # Políticas para students, XP, evaluaciones + función search_students_page
+│       ├── 006_rls_enrollments.sql # Políticas para group_enrollments + función get_enrollment_stats
+│       ├── 007_rls_skills.sql      # Políticas para branches y skills
+│       ├── 008_rls_projects.sql    # Políticas para projects, project_resources, project_skills, project_maps
+│       ├── 009_project_maps.sql    # Separación módulo project_maps, column initial_project_id
+│       ├── 010_rls_validation.sql  # Políticas para plannings, planning_project_log, sessions (lectura)
+│       ├── 011_rls_sessions.sql    # RLS sesiones del profesor + función get_my_worker_id + índice único
+│       ├── 012_rls_hr_modules.sql  # RLS fichajes y ausencias
+│       └── 013_resources.sql       # Columnas resource_type/target_role + RLS recursos globales
 │
 ├── src/
 │   ├── app/                       # App Router de Next.js
@@ -106,12 +113,18 @@ ignite-nexus/
 │   │       │       ├── students/
 │   │       │       │   ├── page.tsx
 │   │       │       │   └── [studentId]/page.tsx
-│   │       │       └── enrollments/page.tsx
+│   │       │       ├── enrollments/page.tsx
+│   │       │       ├── absences/page.tsx
+│   │       │       └── resources/page.tsx
 │   │       │
 │   │       ├── (teacher)/         # Route group profesor
 │   │       │   ├── layout.tsx     # Guard requireWorker + TeacherNav
 │   │       │   └── teacher/
-│   │       │       └── home/page.tsx
+│   │       │       ├── home/page.tsx
+│   │       │       ├── groups/[groupId]/page.tsx
+│   │       │       ├── timesheet/page.tsx
+│   │       │       ├── absences/page.tsx
+│   │       │       └── resources/page.tsx
 │   │       │
 │   │       ├── (student)/         # Route group alumno
 │   │       │   ├── layout.tsx     # Tema gamificado (.theme-student)
@@ -128,10 +141,19 @@ ignite-nexus/
 │   │   │   ├── teachers/          # TeachersList, AddTeacherDialog, PermissionsGrid
 │   │   │   ├── students/          # StudentsList, EditStudentDialog, GroupsCard, XPTrajectory, EvaluationHistory, AttitudeLog
 │   │   │   ├── enrollments/       # EnrollmentStats, RecentActivity, CSVUploadTool, BulkDeactivateTool
-│   │   │   └── settings/          # PlatformNameForm, SchoolYearsSection, CreateSchoolYearDialog, CloseCourseDialog
+│   │   │   ├── settings/          # PlatformNameForm, SchoolYearsSection, CreateSchoolYearDialog, CloseCourseDialog
+│   │   │   ├── project-maps/      # MapsList, CreateMapDialog, MapEditor
+│   │   │   ├── validation/        # ValidationList, ValidationPanel
+│   │   │   ├── absences/          # AbsencesAdminList
+│   │   │   └── resources/         # ResourcesAdminList, ResourceDialog
 │   │   │
 │   │   ├── auth/                  # LoginForm
-│   │   ├── teacher/               # TeacherNav (barra de navegación del profesor)
+│   │   ├── teacher/
+│   │   │   ├── TeacherNav.tsx     # Barra de navegación del profesor
+│   │   │   ├── group/             # ActiveSessionForm, AttendanceHistorySection, ProjectMapReadOnly
+│   │   │   ├── timesheet/         # TimesheetToggle, TimesheetHistoryList
+│   │   │   ├── absences/          # AbsencesList, RequestAbsenceDialog
+│   │   │   └── resources/         # ResourcesList
 │   │   └── ui/                    # Componentes base de shadcn/ui copiados y personalizados
 │   │       ├── button.tsx         # Variantes: default, outline, ghost, destructive, secondary
 │   │       ├── input.tsx
@@ -150,14 +172,33 @@ ignite-nexus/
 │   │   │   ├── schools.ts         # getSchoolsWithGroups(), getActiveWorkers() — unstable_cache, cliente público
 │   │   │   ├── teachers.ts        # getWorkersPage(), getWorkerProfile() — cliente autenticado, sin caché
 │   │   │   ├── students.ts        # getStudentsPage() (RPC), getStudentProfile() — cliente autenticado, sin caché
-│   │   │   └── enrollments.ts     # getEnrollmentStats() (RPC), getRecentEnrollments/Leaves(), getActiveGroups() — mixto
+│   │   │   ├── enrollments.ts     # getEnrollmentStats() (RPC), getRecentEnrollments/Leaves(), getActiveGroups() — mixto
+│   │   │   ├── teacher.ts         # getTeacherGroupDetail(), getActiveSession() — datos operativos del profesor
+│   │   │   ├── timesheets.ts      # getTimesheetStatus() — fichajes del profesor
+│   │   │   ├── absences.ts        # getMyAbsences(), getAdminAbsencesPage(), getAbsenceReasons()
+│   │   │   ├── global-resources.ts # getTeacherResources(), getAdminResourcesPage(), getSchoolsForSelect(), getGroupsForSelect()
+│   │   │   ├── skills.ts          # getBranchesWithSkills() — unstable_cache
+│   │   │   ├── projects.ts        # getProjectsList() — unstable_cache
+│   │   │   ├── project-maps.ts    # getProjectMapsList() (cached), getProjectMapDetail() (live)
+│   │   │   └── validation.ts      # getValidationList()
 │   │   │
-│   │   └── actions/               # Server Actions (mutaciones)
-│   │       ├── settings.ts        # updatePlatformName, createSchoolYear, activateSchoolYear, closeCourse
-│   │       ├── schools.ts         # createSchool, createGroup
-│   │       ├── teachers.ts        # createWorker, toggleWorkerStatus, upsertModulePermission, setSuperAdmin
-│   │       ├── students.ts        # updateStudent, toggleStudentStatus, updateEvaluationMultiplier
-│   │       └── enrollments.ts     # bulkEnroll, bulkDeactivate
+│   │   ├── actions/               # Server Actions (mutaciones)
+│   │   │   ├── settings.ts        # updatePlatformName, createSchoolYear, activateSchoolYear, closeCourse
+│   │   │   ├── schools.ts         # createSchool, createGroup
+│   │   │   ├── teachers.ts        # createWorker, toggleWorkerStatus, upsertModulePermission, setSuperAdmin
+│   │   │   ├── students.ts        # updateStudent, toggleStudentStatus, updateEvaluationMultiplier
+│   │   │   ├── enrollments.ts     # bulkEnroll, bulkDeactivate
+│   │   │   ├── teacher-sessions.ts # startSession, endSession, markAttendance, finalizeSession, assignProject
+│   │   │   ├── timesheets.ts      # recordTimesheet
+│   │   │   ├── absences.ts        # requestAbsence, approveAbsence, rejectAbsence
+│   │   │   ├── global-resources.ts # createGlobalResource, updateGlobalResource, toggleGlobalResourceStatus
+│   │   │   ├── skills.ts          # createBranch, updateBranch, createSkill, updateSkill
+│   │   │   ├── projects.ts        # createProject, updateProject
+│   │   │   ├── project-maps.ts    # createProjectMap, saveProjectMap, toggleProjectMapStatus
+│   │   │   └── validation.ts      # getSessionTrajectory, validateAssignment, changeProjectAssignment
+│   │   │
+│   │   └── utils/                 # Utilidades compartidas
+│   │       └── map-layout.ts      # computeLayout() — BFS topológico para MapEditor y ProjectMapReadOnly
 │   │
 │   ├── i18n/
 │   │   ├── routing.ts             # Define locales ['es','en','ca'] y defaultLocale 'es'
@@ -876,3 +917,118 @@ Todos los módulos del panel de administración completados hasta la fecha, con 
 - Filtrado en memoria en el cliente (volumen acotado para colas de validación)
 - `getSessionTrajectory` es un Server Action que retorna datos, llamado con `useEffect` desde el cliente para carga lazy
 - Diseño split-panel: lista `flex-1` + panel fijo `w-[400px]` cuando hay ítem seleccionado
+
+---
+
+### Home del profesor
+
+**Ruta:** `/teacher/home`  
+**Descripción:** Página de bienvenida del profesor tras login. Muestra el nombre de la plataforma y los grupos activos del profesor con acceso directo a cada pantalla de grupo.
+
+| Capa | Archivos |
+|------|---------|
+| Página | `src/app/[locale]/(teacher)/teacher/home/page.tsx` |
+| Datos | `src/lib/data/teacher.ts` — `getTeacherHome()` |
+
+---
+
+### Pantalla de grupo
+
+**Ruta:** `/teacher/groups/[groupId]`  
+**Descripción:** Vista operativa principal del profesor para un grupo. Muestra el mapa curricular del grupo (ProjectMapReadOnly), permite iniciar/finalizar sesiones y registrar asistencia (ActiveSessionForm), y consultar el historial de asistencia (AttendanceHistorySection).
+
+| Capa | Archivos |
+|------|---------|
+| Página | `src/app/[locale]/(teacher)/teacher/groups/[groupId]/page.tsx` |
+| Datos | `src/lib/data/teacher.ts` — `getTeacherGroupDetail()`, `getActiveSession()` |
+| Acciones | `src/lib/actions/teacher-sessions.ts` — `startSession`, `endSession`, `markAttendance`, `finalizeSession`, `assignProject` |
+| Componentes | `src/components/teacher/group/ActiveSessionForm.tsx`, `AttendanceHistorySection.tsx`, `ProjectMapReadOnly.tsx` |
+| Utilidades | `src/lib/utils/map-layout.ts` — `computeLayout()` BFS topológico compartido con MapEditor (hgap=200) |
+
+**Notas técnicas:**
+- `TrafficLight` y `SessionStatus` definidos en `@/types/index.ts` y re-exportados desde `teacher.ts` para compatibilidad hacia atrás
+- `attendanceMap` pre-computado como `Map<studentId, attended>` para evitar O(n²) en el render
+
+---
+
+### Fichaje del profesor
+
+**Ruta:** `/teacher/timesheet`  
+**Descripción:** Panel de fichaje del profesor. Muestra el estado actual (fichado/no fichado), permite fichar entrada o salida con un botón, y presenta el historial de fichajes del día actual y los últimos días con totales por día.
+
+| Capa | Archivos |
+|------|---------|
+| Página | `src/app/[locale]/(teacher)/teacher/timesheet/page.tsx` |
+| Datos | `src/lib/data/timesheets.ts` — `getTimesheetStatus()` (últimos 14 días en una query, agrupados por fecha) |
+| Acciones | `src/lib/actions/timesheets.ts` — `recordTimesheet(type)` (worker_id determinado en servidor) |
+| Componentes | `src/components/teacher/timesheet/TimesheetToggle.tsx` (client), `TimesheetHistoryList.tsx` (server) |
+
+**Notas técnicas:**
+- RLS: `worker_read_own_timesheets` y `worker_insert_timesheets` usan `get_my_worker_id()` (migración 012)
+- Parsing de fechas con `T12:00:00` para evitar desfase UTC en visualización
+- `isIn` se determina por el tipo (`in`/`out`) del fichaje más reciente entre todos los registros cargados
+
+---
+
+### Ausencias del profesor
+
+**Ruta:** `/teacher/absences`  
+**Descripción:** El profesor puede ver sus ausencias pasadas (con estado: pendiente/aprobada/rechazada) y solicitar nuevas ausencias indicando motivo del catálogo, fechas de inicio y fin, y comentario opcional.
+
+| Capa | Archivos |
+|------|---------|
+| Página | `src/app/[locale]/(teacher)/teacher/absences/page.tsx` |
+| Datos | `src/lib/data/absences.ts` — `getMyAbsences()`, `getAbsenceReasons()` |
+| Acciones | `src/lib/actions/absences.ts` — `requestAbsence()` (inserta con status='pending') |
+| Componentes | `src/components/teacher/absences/AbsencesList.tsx` (server async), `RequestAbsenceDialog.tsx` (client) |
+
+---
+
+### Gestión de ausencias (admin)
+
+**Ruta:** `/admin/absences`  
+**Descripción:** Panel de administración de ausencias. Lista todas las solicitudes con filtro por estado (pendiente/aprobada/rechazada). El admin puede aprobar o rechazar solicitudes pendientes.
+
+| Capa | Archivos |
+|------|---------|
+| Página | `src/app/[locale]/(admin)/admin/absences/page.tsx` |
+| Datos | `src/lib/data/absences.ts` — `getAdminAbsencesPage(status, page, locale)` |
+| Acciones | `src/lib/actions/absences.ts` — `approveAbsence()`, `rejectAbsence()` |
+| Componentes | `src/components/admin/absences/AbsencesAdminList.tsx` (client: tabs de estado + botones) |
+
+**Notas técnicas:**
+- RLS: `admin_read_absences` y `admin_update_absence_status` (migración 012)
+- El profesor solo puede insertar con `status='pending'` (policy WITH CHECK)
+
+---
+
+### Recursos globales del profesor
+
+**Ruta:** `/teacher/resources`  
+**Descripción:** Vista de solo lectura de los recursos globales activos y visibles para el profesor. El RLS filtra automáticamente por rol, escuela y grupo según la configuración de cada recurso.
+
+| Capa | Archivos |
+|------|---------|
+| Página | `src/app/[locale]/(teacher)/teacher/resources/page.tsx` |
+| Datos | `src/lib/data/global-resources.ts` — `getTeacherResources()` |
+| Componentes | `src/components/teacher/resources/ResourcesList.tsx` (server async) |
+
+---
+
+### Recursos globales (admin)
+
+**Ruta:** `/admin/resources`  
+**Descripción:** Gestión completa de recursos globales. Permite crear, editar y desactivar recursos configurando visibilidad por rol (todos/profesor/alumno), por escuela o por grupo.
+
+| Capa | Archivos |
+|------|---------|
+| Página | `src/app/[locale]/(admin)/admin/resources/page.tsx` |
+| Datos | `src/lib/data/global-resources.ts` — `getAdminResourcesPage()`, `getSchoolsForSelect()`, `getGroupsForSelect()` |
+| Acciones | `src/lib/actions/global-resources.ts` — `createGlobalResource`, `updateGlobalResource`, `toggleGlobalResourceStatus` |
+| Componentes | `src/components/admin/resources/ResourcesAdminList.tsx` (client), `ResourceDialog.tsx` (client) |
+
+**Notas técnicas:**
+- Columnas `resource_type` y `target_role` añadidas en migración 013 (la tabla original usaba nombres distintos)
+- Visibilidad polimórfica: `visible_to_type` ('school'/'group'/null) + `visible_to_id` (UUID)
+- Batch lookup para nombres: IDs únicos por tipo → dos queries `.in()` en paralelo → Maps para resolución O(1)
+- RLS worker: verifica `target_role` + EXISTS con JOIN `group_assignments → groups` para scope escuela/grupo (migración 013)
