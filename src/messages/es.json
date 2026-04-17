@@ -554,6 +554,14 @@
     "absentLabel": "Ausentes",
     "presentLabel": "Presentes"
   },
+  "teacherProjectMaps": {
+    "pageTitle": "Mapas de proyectos",
+    "pageDescription": "Explora todos los mapas de aprendizaje activos.",
+    "noMaps": "No hay mapas de proyectos disponibles.",
+    "projects": "{count} proyectos",
+    "backToMaps": "← Volver a los mapas",
+    "mapNotFound": "Mapa no encontrado."
+  },
   "teacherResources": {
     "pageTitle": "Recursos",
     "pageDescription": "Materiales y enlaces compartidos contigo.",

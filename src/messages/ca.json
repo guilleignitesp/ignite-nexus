@@ -554,6 +554,14 @@
     "absentLabel": "Absents",
     "presentLabel": "Presents"
   },
+  "teacherProjectMaps": {
+    "pageTitle": "Mapes de projectes",
+    "pageDescription": "Explora tots els mapes d'aprenentatge actius.",
+    "noMaps": "No hi ha mapes de projectes disponibles.",
+    "projects": "{count} projectes",
+    "backToMaps": "← Tornar als mapes",
+    "mapNotFound": "Mapa no trobat."
+  },
   "teacherResources": {
     "pageTitle": "Recursos",
     "pageDescription": "Materials i enllaços compartits amb tu.",
