@@ -122,6 +122,7 @@ export function TeachersList({
                     <Button
                       size="sm"
                       variant="ghost"
+                      nativeButton={false}
                       render={
                         <Link href={`/${locale}/admin/teachers/${worker.id}`} />
                       }

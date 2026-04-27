@@ -10,7 +10,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   getGroupPermanentAssignments,
@@ -31,10 +30,11 @@ type CurrentMember = {
   lastName: string
 }
 
-type SearchResult = {
+type WorkerItem = {
   id: string
   firstName: string
   lastName: string
+  conflict: boolean
 }
 
 export function PermanentAssignmentDialog({ group, onClose }: Props) {
@@ -43,39 +43,34 @@ export function PermanentAssignmentDialog({ group, onClose }: Props) {
   const [isPending, startTransition] = useTransition()
 
   const [current, setCurrent] = useState<CurrentMember[]>([])
+  const [available, setAvailable] = useState<WorkerItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
-  const [searching, setSearching] = useState(false)
   const [manualConflicts, setManualConflicts] = useState(0)
-  const [pendingAdd, setPendingAdd] = useState<SearchResult | null>(null)
+  const [pendingAdd, setPendingAdd] = useState<WorkerItem | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  async function loadCurrent() {
+  async function loadData() {
+    setLoading(true)
+    setError(null)
     try {
-      const data = await getGroupPermanentAssignments(group.id)
-      setCurrent(data)
+      const [currentData, availableData] = await Promise.all([
+        getGroupPermanentAssignments(group.id),
+        searchWorkersForAssignment('', group.id),
+      ])
+      setCurrent(currentData)
+      setAvailable(availableData)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error loading team')
+      setError(e instanceof Error ? e.message : 'Error loading data')
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    loadCurrent()
+    loadData()
   }, [group.id])
 
-  function handleSearch(e: React.FormEvent) {
-    e.preventDefault()
-    setSearching(true)
-    searchWorkersForAssignment(searchQuery, group.id)
-      .then(setSearchResults)
-      .catch((e) => setError(e instanceof Error ? e.message : 'Search error'))
-      .finally(() => setSearching(false))
-  }
-
-  function handleAddWorker(worker: SearchResult) {
+  function handleAddWorker(worker: WorkerItem) {
     setError(null)
     startTransition(async () => {
       try {
@@ -85,9 +80,7 @@ export function PermanentAssignmentDialog({ group, onClose }: Props) {
           setPendingAdd(worker)
           return
         }
-        await loadCurrent()
-        setSearchResults([])
-        setSearchQuery('')
+        await loadData()
         router.refresh()
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Error adding teacher')
@@ -103,9 +96,7 @@ export function PermanentAssignmentDialog({ group, onClose }: Props) {
         await addPermanentAssignment(group.id, pendingAdd.id, true)
         setManualConflicts(0)
         setPendingAdd(null)
-        await loadCurrent()
-        setSearchResults([])
-        setSearchQuery('')
+        await loadData()
         router.refresh()
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Error adding teacher')
@@ -113,23 +104,24 @@ export function PermanentAssignmentDialog({ group, onClose }: Props) {
     })
   }
 
-  function handleCancelForce() {
-    setManualConflicts(0)
-    setPendingAdd(null)
-  }
-
   function handleRemove(assignmentId: string) {
     setError(null)
     startTransition(async () => {
       try {
         await removePermanentAssignment(assignmentId)
-        await loadCurrent()
+        await loadData()
         router.refresh()
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Error removing teacher')
       }
     })
   }
+
+  // Sort: non-conflicting first (both groups sorted by last name)
+  const sortedAvailable = [...available].sort((a, b) => {
+    if (a.conflict !== b.conflict) return a.conflict ? 1 : -1
+    return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`)
+  })
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
@@ -173,7 +165,12 @@ export function PermanentAssignmentDialog({ group, onClose }: Props) {
               <Button size="sm" variant="destructive" onClick={handleForceAdd} disabled={isPending}>
                 {t('forceOverride')}
               </Button>
-              <Button size="sm" variant="outline" onClick={handleCancelForce} disabled={isPending}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => { setManualConflicts(0); setPendingAdd(null) }}
+                disabled={isPending}
+              >
                 {t('cancel')}
               </Button>
             </div>
@@ -181,7 +178,7 @@ export function PermanentAssignmentDialog({ group, onClose }: Props) {
         )}
 
         {/* Current team */}
-        <div style={{ marginBottom: '1rem' }}>
+        <div style={{ marginBottom: '1.25rem' }}>
           <div
             style={{
               fontSize: '0.75rem',
@@ -232,7 +229,7 @@ export function PermanentAssignmentDialog({ group, onClose }: Props) {
           )}
         </div>
 
-        {/* Add teacher */}
+        {/* All available workers */}
         <div>
           <div
             style={{
@@ -244,32 +241,22 @@ export function PermanentAssignmentDialog({ group, onClose }: Props) {
               marginBottom: '0.5rem',
             }}
           >
-            {t('addToTeam')}
+            {t('allWorkers')}
           </div>
-          <form
-            onSubmit={handleSearch}
-            style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}
-          >
-            <Input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t('searchTeacher')}
-              style={{ flex: 1 }}
-            />
-            <Button type="submit" size="sm" disabled={searching || isPending}>
-              {t('search')}
-            </Button>
-          </form>
 
-          {searchResults.length > 0 && (
-            <div
-              style={{
-                border: '1px solid var(--border)',
-                borderRadius: '0.375rem',
-                overflow: 'hidden',
-              }}
-            >
-              {searchResults.map((worker) => (
+          {loading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+            </div>
+          ) : sortedAvailable.length === 0 ? (
+            <p style={{ fontSize: '0.875rem', color: 'var(--muted-foreground)' }}>
+              {t('noTeam')}
+            </p>
+          ) : (
+            <div style={{ maxHeight: '260px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '0.375rem' }}>
+              {sortedAvailable.map((worker) => (
                 <div
                   key={worker.id}
                   style={{
@@ -278,18 +265,35 @@ export function PermanentAssignmentDialog({ group, onClose }: Props) {
                     justifyContent: 'space-between',
                     padding: '0.5rem 0.75rem',
                     borderBottom: '1px solid var(--border)',
+                    opacity: worker.conflict ? 0.6 : 1,
                   }}
                 >
                   <span style={{ fontSize: '0.875rem' }}>
                     {worker.firstName} {worker.lastName}
                   </span>
-                  <Button
-                    size="xs"
-                    onClick={() => handleAddWorker(worker)}
-                    disabled={isPending}
-                  >
-                    {t('addWorker')}
-                  </Button>
+                  {worker.conflict ? (
+                    <span
+                      style={{
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        padding: '0.125rem 0.5rem',
+                        borderRadius: '9999px',
+                        background: 'var(--muted)',
+                        color: 'var(--muted-foreground)',
+                        border: '1px solid var(--border)',
+                      }}
+                    >
+                      {t('workerConflict')}
+                    </span>
+                  ) : (
+                    <Button
+                      size="xs"
+                      onClick={() => handleAddWorker(worker)}
+                      disabled={isPending}
+                    >
+                      {t('addWorker')}
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>

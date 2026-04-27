@@ -1,5 +1,6 @@
 import { unstable_cache } from 'next/cache'
 import { createClient } from '@supabase/supabase-js'
+import { createClient as createServerClient } from '@/lib/supabase-server'
 
 export interface PlatformSettings {
   platform_name: string
@@ -37,15 +38,11 @@ export const getSettings = unstable_cache(
   { tags: ['platform_settings'], revalidate: false }
 )
 
-export const getSchoolYears = unstable_cache(
-  async (): Promise<SchoolYear[]> => {
-    const supabase = getPublicSupabase()
-    const { data } = await supabase
-      .from('school_years')
-      .select('id, name, start_date, end_date, is_active, created_at')
-      .order('start_date', { ascending: false })
-    return data ?? []
-  },
-  ['school_years'],
-  { tags: ['school_years'], revalidate: false }
-)
+export async function getSchoolYears(): Promise<SchoolYear[]> {
+  const supabase = await createServerClient()
+  const { data } = await supabase
+    .from('school_years')
+    .select('id, name, start_date, end_date, is_active, created_at')
+    .order('start_date', { ascending: false })
+  return (data ?? []) as SchoolYear[]
+}

@@ -37,6 +37,7 @@ export default async function StudentProfilePage({
             variant="ghost"
             className="-ml-2 text-muted-foreground"
             render={<Link href={`/${locale}/admin/students`} />}
+            nativeButton={false}
           >
             {t('backToList')}
           </Button>

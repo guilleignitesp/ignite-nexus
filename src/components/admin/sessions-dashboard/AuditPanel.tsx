@@ -32,6 +32,8 @@ function formatChangeType(
     substitute_remove: t('changeType.substitute_remove'),
     absent_mark: t('changeType.absent_mark'),
     absent_unmark: t('changeType.absent_unmark'),
+    permanent_add: t('changeType.permanent_add'),
+    permanent_remove: t('changeType.permanent_remove'),
   }
   return map[changeType] ?? changeType
 }
@@ -47,6 +49,10 @@ function changeTypeBadgeVariant(
     case 'absent_mark':
       return 'destructive'
     case 'absent_unmark':
+      return 'secondary'
+    case 'permanent_add':
+      return 'default'
+    case 'permanent_remove':
       return 'secondary'
     default:
       return 'outline'
@@ -201,14 +207,14 @@ export function AuditPanel({ open, onClose }: Props) {
                         {entry.groupName} · {entry.schoolName}
                       </div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>
-                        {entry.sessionDate} · por {entry.changedByName}
+                        {entry.sessionDate || '—'} · por {entry.changedByName}
                       </div>
                       <div style={{ fontSize: '0.7rem', color: 'var(--muted-foreground)', marginTop: '0.125rem' }}>
                         {formatDate(entry.changedAt)}
                       </div>
                     </div>
 
-                    {!entry.isReverted && (
+                    {!entry.isReverted && entry.isSessionChange && (
                       <Button
                         size="xs"
                         variant="outline"

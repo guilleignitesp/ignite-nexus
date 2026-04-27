@@ -15,7 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import type { School, Worker } from '@/lib/data/schools'
+import type { School } from '@/lib/data/schools'
 import type { SchoolYear } from '@/lib/data/settings'
 
 interface AddGroupDialogProps {
@@ -24,7 +24,6 @@ interface AddGroupDialogProps {
   defaultSchoolId: string
   schools: School[]
   schoolYears: SchoolYear[]
-  workers: Worker[]
 }
 
 const WEEKDAY_SHORT: Record<number, string> = {
@@ -49,7 +48,6 @@ export function AddGroupDialog({
   defaultSchoolId,
   schools,
   schoolYears,
-  workers,
 }: AddGroupDialogProps) {
   const t = useTranslations('schools')
   const router = useRouter()
@@ -60,7 +58,6 @@ export function AddGroupDialog({
   const [schoolId, setSchoolId] = useState(defaultSchoolId)
   const [schoolYearId, setSchoolYearId] = useState(activeYear?.id ?? '')
   const [selectedDays, setSelectedDays] = useState<Record<number, DaySlot>>(buildInitialDays())
-  const [selectedTeacherIds, setSelectedTeacherIds] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -75,7 +72,6 @@ export function AddGroupDialog({
     setSchoolId(defaultSchoolId)
     setSchoolYearId(activeYear?.id ?? '')
     setSelectedDays(buildInitialDays())
-    setSelectedTeacherIds(new Set())
     setError(null)
   }
 
@@ -96,18 +92,6 @@ export function AddGroupDialog({
       const slot = prev[day]
       if (!slot) return prev
       return { ...prev, [day]: { ...slot, [field]: value } }
-    })
-  }
-
-  function toggleTeacher(id: string) {
-    setSelectedTeacherIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
-      return next
     })
   }
 
@@ -133,7 +117,6 @@ export function AddGroupDialog({
           schoolId,
           schoolYearId: schoolYearId || null,
           schedule,
-          teacherIds: Array.from(selectedTeacherIds),
         })
         handleOpenChange(false)
         router.refresh()
@@ -246,31 +229,7 @@ export function AddGroupDialog({
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label>{t('teachersLabel')}</Label>
-            <div className="max-h-48 overflow-y-auto rounded-lg border p-2 space-y-1">
-              {workers.map((worker) => (
-                <label
-                  key={worker.id}
-                  className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-muted"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedTeacherIds.has(worker.id)}
-                    onChange={() => toggleTeacher(worker.id)}
-                    disabled={isPending}
-                    className="accent-primary"
-                  />
-                  {worker.last_name}, {worker.first_name}
-                </label>
-              ))}
-              {workers.length === 0 && (
-                <p className="px-2 py-1 text-sm text-muted-foreground">{t('noWorkers')}</p>
-              )}
-            </div>
-          </div>
-
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error &&<p className="text-sm text-destructive">{error}</p>}
 
           <DialogFooter>
             <DialogClose

@@ -69,6 +69,7 @@ export function GroupCard({ group, locale }: GroupCardProps) {
       {/* Botón ver grupo */}
       <Button
         render={<Link href={`/${locale}/teacher/groups/${group.groupId}`} />}
+        nativeButton={false}
         variant="outline"
         size="sm"
         className="mt-auto w-full"

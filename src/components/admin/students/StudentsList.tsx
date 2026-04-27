@@ -111,6 +111,7 @@ export function StudentsList({
                       size="sm"
                       variant="ghost"
                       render={<Link href={`/${locale}/admin/students/${s.id}`} />}
+                      nativeButton={false}
                     >
                       {t('viewProfile')}
                     </Button>

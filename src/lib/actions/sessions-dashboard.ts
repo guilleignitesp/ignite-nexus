@@ -31,6 +31,7 @@ export interface ChangeLogEntry {
   changeType: string
   changedAt: string
   isReverted: boolean
+  isSessionChange: boolean
 }
 
 // ─── Auth helper ──────────────────────────────────────────────
@@ -544,6 +545,175 @@ export async function unmarkAbsent(
   if (logError) throw new Error(logError.message)
 }
 
+// ─── generateGroupSessions ────────────────────────────────────
+
+export async function generateGroupSessions(
+  groupId: string,
+  startDate: string,
+  endDate: string
+): Promise<{ created: number }> {
+  await assertDashboardAccess()
+  const supabase = await createClient()
+
+  const { data: planningData } = await supabase
+    .from('plannings')
+    .select('id')
+    .eq('group_id', groupId)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (!planningData) throw new Error('NO_PLANNING')
+  const planningId = (planningData as { id: string }).id
+
+  const { data: scheduleData } = await supabase
+    .from('group_schedule')
+    .select('weekday, start_time, end_time')
+    .eq('group_id', groupId)
+
+  const schedule = (scheduleData ?? []) as {
+    weekday: number
+    start_time: string
+    end_time: string
+  }[]
+
+  if (schedule.length === 0) throw new Error('NO_SCHEDULE')
+
+  type DateSlot = { date: string; startTime: string; endTime: string }
+  const sessionDates: DateSlot[] = []
+  const start = new Date(`${startDate}T12:00:00`)
+  const end = new Date(`${endDate}T12:00:00`)
+
+  for (const slot of schedule) {
+    // DB weekday: 1=Mon…5=Fri; JS getDay(): 0=Sun, 1=Mon…6=Sat
+    const jsWeekday = slot.weekday === 7 ? 0 : slot.weekday
+    const cursor = new Date(start)
+    while (cursor <= end) {
+      if (cursor.getDay() === jsWeekday) {
+        sessionDates.push({
+          date: cursor.toISOString().slice(0, 10),
+          startTime: slot.start_time,
+          endTime: slot.end_time,
+        })
+      }
+      cursor.setDate(cursor.getDate() + 1)
+    }
+  }
+
+  if (sessionDates.length === 0) return { created: 0 }
+
+  const { data: existing } = await supabase
+    .from('sessions')
+    .select('session_date')
+    .eq('planning_id', planningId)
+    .gte('session_date', startDate)
+    .lte('session_date', endDate)
+
+  const existingDates = new Set(
+    ((existing ?? []) as { session_date: string }[]).map((s) => s.session_date)
+  )
+
+  const toInsert = sessionDates.filter((s) => !existingDates.has(s.date))
+  if (toInsert.length === 0) return { created: 0 }
+
+  const { error } = await supabase.from('sessions').insert(
+    toInsert.map((s) => ({
+      planning_id: planningId,
+      session_date: s.date,
+      start_time: s.startTime,
+      end_time: s.endTime,
+      status: 'pending',
+      is_consolidated: false,
+      project_id: null,
+    }))
+  )
+
+  if (error) throw new Error(error.message)
+  return { created: toInsert.length }
+}
+
+// ─── updateSessionStatus ──────────────────────────────────────
+
+export async function updateSessionStatus(
+  sessionId: string,
+  status: 'pending' | 'completed' | 'suspended' | 'holiday' | 'cancelled'
+): Promise<void> {
+  await assertDashboardAccess()
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('sessions')
+    .update({ status })
+    .eq('id', sessionId)
+
+  if (error) throw new Error(error.message)
+}
+
+// ─── updateSessionMinTeachers ─────────────────────────────────
+
+export async function updateSessionMinTeachers(
+  sessionId: string,
+  minTeachersRequired: number
+): Promise<void> {
+  await assertDashboardAccess()
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('sessions')
+    .update({ min_teachers_required: minTeachersRequired })
+    .eq('id', sessionId)
+
+  if (error) throw new Error(error.message)
+}
+
+// ─── updateSessionProject ─────────────────────────────────────
+
+export async function updateSessionProject(
+  sessionId: string,
+  projectId: string | null
+): Promise<void> {
+  await assertDashboardAccess()
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('sessions')
+    .update({ project_id: projectId })
+    .eq('id', sessionId)
+
+  if (error) throw new Error(error.message)
+}
+
+// ─── getGroupProjects ─────────────────────────────────────────
+
+export async function getGroupProjects(
+  groupId: string
+): Promise<{ id: string; name: string }[]> {
+  await assertDashboardAccess()
+  const supabase = await createClient()
+
+  const { data: planningData } = await supabase
+    .from('plannings')
+    .select('id, project_map_id')
+    .eq('group_id', groupId)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (!planningData) return []
+  const { project_map_id } = planningData as { id: string; project_map_id: string | null }
+  if (!project_map_id) return []
+
+  const { data, error } = await supabase
+    .from('project_map_nodes')
+    .select('projects(id, name)')
+    .eq('map_id', project_map_id)
+
+  if (error) throw new Error(error.message)
+
+  type RawNode = { projects: { id: string; name: string } | null }
+  return ((data ?? []) as unknown as RawNode[])
+    .filter((n) => n.projects !== null)
+    .map((n) => ({ id: n.projects!.id, name: n.projects!.name }))
+}
+
 // ─── getGroupPermanentAssignments ─────────────────────────────
 
 export async function getGroupPermanentAssignments(
@@ -584,7 +754,7 @@ export async function addPermanentAssignment(
   workerId: string,
   force: boolean
 ): Promise<{ manualConflicts: number }> {
-  await assertDashboardAccess()
+  const changedBy = await assertDashboardAccess()
   const supabase = await createClient()
 
   const today = new Date().toISOString().slice(0, 10)
@@ -676,16 +846,30 @@ export async function addPermanentAssignment(
   }
 
   // Insert group assignment
-  const { error: insertError } = await supabase.from('group_assignments').insert({
-    worker_id: workerId,
-    group_id: groupId,
-    start_date: today,
-    end_date: null,
-    type: 'permanent',
-    is_active: true,
-  })
+  const { data: insertedGA, error: insertError } = await supabase
+    .from('group_assignments')
+    .insert({
+      worker_id: workerId,
+      group_id: groupId,
+      start_date: today,
+      end_date: null,
+      type: 'permanent',
+      is_active: true,
+    })
+    .select('id')
+    .single()
 
   if (insertError) throw new Error(insertError.message)
+
+  // Log
+  await supabase.from('dashboard_change_log').insert({
+    session_id: null,
+    group_id: groupId,
+    worker_id: workerId,
+    changed_by: changedBy,
+    change_type: 'permanent_add',
+    new_state: { assignment_id: (insertedGA as { id: string }).id },
+  })
 
   return { manualConflicts: 0 }
 }
@@ -695,19 +879,21 @@ export async function addPermanentAssignment(
 export async function removePermanentAssignment(
   assignmentId: string
 ): Promise<void> {
-  await assertDashboardAccess()
+  const changedBy = await assertDashboardAccess()
   const supabase = await createClient()
 
   const today = new Date().toISOString().slice(0, 10)
 
-  // Verify it exists
+  // Fetch assignment details needed for logging
   const { data, error: fetchError } = await supabase
     .from('group_assignments')
-    .select('id')
+    .select('id, group_id, worker_id')
     .eq('id', assignmentId)
     .single()
 
   if (fetchError || !data) throw new Error(fetchError?.message ?? 'Assignment not found')
+
+  const { group_id, worker_id } = data as { id: string; group_id: string; worker_id: string }
 
   const { error: updateError } = await supabase
     .from('group_assignments')
@@ -715,6 +901,16 @@ export async function removePermanentAssignment(
     .eq('id', assignmentId)
 
   if (updateError) throw new Error(updateError.message)
+
+  // Log
+  await supabase.from('dashboard_change_log').insert({
+    session_id: null,
+    group_id,
+    worker_id,
+    changed_by: changedBy,
+    change_type: 'permanent_remove',
+    previous_state: { assignment_id: assignmentId },
+  })
 }
 
 // ─── searchWorkersForAssignment ──────────────────────────────
@@ -722,48 +918,109 @@ export async function removePermanentAssignment(
 export async function searchWorkersForAssignment(
   query: string,
   groupId: string
-): Promise<{ id: string; firstName: string; lastName: string }[]> {
+): Promise<{ id: string; firstName: string; lastName: string; conflict: boolean }[]> {
   const supabase = await createClient()
 
-  // Get currently assigned worker IDs for this group
-  const { data: assignedData } = await supabase
+  // Run in parallel: target group's weekdays + currently assigned worker IDs + all active workers
+  const [scheduleResult, assignedResult, workersResult] = await Promise.all([
+    supabase
+      .from('group_schedule')
+      .select('weekday')
+      .eq('group_id', groupId),
+    supabase
+      .from('group_assignments')
+      .select('worker_id')
+      .eq('group_id', groupId)
+      .is('end_date', null)
+      .eq('type', 'permanent')
+      .eq('is_active', true),
+    (() => {
+      let q = supabase
+        .from('workers')
+        .select('id, first_name, last_name')
+        .eq('status', 'active')
+        .order('last_name')
+      if (query.trim()) {
+        q = q.or(`first_name.ilike.%${query.trim()}%,last_name.ilike.%${query.trim()}%`)
+      }
+      return q
+    })(),
+  ])
+
+  if (workersResult.error) throw new Error(workersResult.error.message)
+
+  const targetWeekdays = new Set(
+    ((scheduleResult.data ?? []) as { weekday: number }[]).map((s) => s.weekday)
+  )
+  const assignedIds = new Set(
+    ((assignedResult.data ?? []) as { worker_id: string }[]).map((a) => a.worker_id)
+  )
+
+  const workers = ((workersResult.data ?? []) as { id: string; first_name: string; last_name: string }[])
+    .filter((w) => !assignedIds.has(w.id))
+
+  if (workers.length === 0 || targetWeekdays.size === 0) {
+    return workers.map((w) => ({
+      id: w.id,
+      firstName: w.first_name,
+      lastName: w.last_name,
+      conflict: false,
+    }))
+  }
+
+  // Get all permanent assignments these workers have to OTHER groups
+  const workerIds = workers.map((w) => w.id)
+  const { data: otherAssignments } = await supabase
     .from('group_assignments')
-    .select('worker_id')
-    .eq('group_id', groupId)
+    .select('worker_id, group_id')
+    .in('worker_id', workerIds)
+    .neq('group_id', groupId)
     .is('end_date', null)
     .eq('type', 'permanent')
     .eq('is_active', true)
 
-  const assignedIds = ((assignedData ?? []) as { worker_id: string }[]).map(
-    (a) => a.worker_id
-  )
+  const otherAssignmentsList = (otherAssignments ?? []) as { worker_id: string; group_id: string }[]
+  const otherGroupIds = [...new Set(otherAssignmentsList.map((a) => a.group_id))]
 
-  // Query active workers matching the query
-  let queryBuilder = supabase
-    .from('workers')
-    .select('id, first_name, last_name')
-    .eq('status', 'active')
-    .limit(10)
-
-  if (query.trim()) {
-    queryBuilder = queryBuilder.or(
-      `first_name.ilike.%${query}%,last_name.ilike.%${query}%`
-    )
-  }
-
-  const { data, error } = await queryBuilder
-
-  if (error) throw new Error(error.message)
-
-  const workers = (data ?? []) as { id: string; first_name: string; last_name: string }[]
-
-  return workers
-    .filter((w) => !assignedIds.includes(w.id))
-    .map((w) => ({
+  if (otherGroupIds.length === 0) {
+    return workers.map((w) => ({
       id: w.id,
       firstName: w.first_name,
       lastName: w.last_name,
+      conflict: false,
     }))
+  }
+
+  // Get weekdays for those other groups
+  const { data: otherSchedules } = await supabase
+    .from('group_schedule')
+    .select('group_id, weekday')
+    .in('group_id', otherGroupIds)
+
+  // Build map: group_id → Set<weekday>
+  const otherGroupWeekdays = new Map<string, Set<number>>()
+  for (const s of ((otherSchedules ?? []) as { group_id: string; weekday: number }[])) {
+    const set = otherGroupWeekdays.get(s.group_id) ?? new Set<number>()
+    set.add(s.weekday)
+    otherGroupWeekdays.set(s.group_id, set)
+  }
+
+  // Build map: worker_id → group_ids[]
+  const workerOtherGroups = new Map<string, string[]>()
+  for (const a of otherAssignmentsList) {
+    const arr = workerOtherGroups.get(a.worker_id) ?? []
+    arr.push(a.group_id)
+    workerOtherGroups.set(a.worker_id, arr)
+  }
+
+  return workers.map((w) => {
+    const otherGroups = workerOtherGroups.get(w.id) ?? []
+    const conflict = otherGroups.some((gid) => {
+      const weekdays = otherGroupWeekdays.get(gid)
+      return weekdays ? [...targetWeekdays].some((day) => weekdays.has(day)) : false
+    })
+    return { id: w.id, firstName: w.first_name, lastName: w.last_name, conflict }
+  })
 }
 
 // ─── getAuditLog ──────────────────────────────────────────────
@@ -778,7 +1035,8 @@ export async function getAuditLog(): Promise<ChangeLogEntry[]> {
       `id, change_type, changed_at, is_reverted, previous_state, new_state,
        worker:worker_id(first_name, last_name),
        changer:changed_by(first_name, last_name),
-       sessions!inner(session_date, plannings!inner(groups!inner(name, schools!inner(name))))`
+       sessions(session_date, plannings(groups(name, schools(name)))),
+       groups:group_id(name, schools(name))`
     )
     .order('changed_at', { ascending: false })
     .limit(200)
@@ -797,29 +1055,37 @@ export async function getAuditLog(): Promise<ChangeLogEntry[]> {
     sessions: {
       session_date: string
       plannings: {
-        groups: {
-          name: string
-          schools: { name: string } | null
-        } | null
+        groups: { name: string; schools: { name: string } | null } | null
       } | null
     } | null
+    groups: { name: string; schools: { name: string } | null } | null
   }
 
-  return ((data ?? []) as unknown as RawLogEntry[]).map((entry) => ({
-    id: entry.id,
-    sessionDate: entry.sessions?.session_date ?? '',
-    groupName: entry.sessions?.plannings?.groups?.name ?? '',
-    schoolName: entry.sessions?.plannings?.groups?.schools?.name ?? '',
-    workerName: entry.worker
-      ? `${entry.worker.first_name} ${entry.worker.last_name}`
-      : '',
-    changedByName: entry.changer
-      ? `${entry.changer.first_name} ${entry.changer.last_name}`
-      : '',
-    changeType: entry.change_type,
-    changedAt: entry.changed_at,
-    isReverted: entry.is_reverted,
-  }))
+  return ((data ?? []) as unknown as RawLogEntry[]).map((entry) => {
+    const sessionDate = entry.sessions?.session_date ?? ''
+    const groupName =
+      entry.sessions?.plannings?.groups?.name ?? entry.groups?.name ?? ''
+    const schoolName =
+      entry.sessions?.plannings?.groups?.schools?.name ??
+      entry.groups?.schools?.name ??
+      ''
+    return {
+      id: entry.id,
+      sessionDate,
+      groupName,
+      schoolName,
+      workerName: entry.worker
+        ? `${entry.worker.first_name} ${entry.worker.last_name}`
+        : '',
+      changedByName: entry.changer
+        ? `${entry.changer.first_name} ${entry.changer.last_name}`
+        : '',
+      changeType: entry.change_type,
+      changedAt: entry.changed_at,
+      isReverted: entry.is_reverted,
+      isSessionChange: entry.sessions !== null,
+    }
+  })
 }
 
 // ─── revertChange ─────────────────────────────────────────────
@@ -841,7 +1107,7 @@ export async function revertChange(changeId: string): Promise<void> {
 
   type ChangeRecord = {
     id: string
-    session_id: string
+    session_id: string | null
     worker_id: string | null
     change_type: string
     previous_state: { assignment_id: string } | null

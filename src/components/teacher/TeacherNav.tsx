@@ -50,6 +50,7 @@ export function TeacherNav({ locale, hasAdminAccess }: TeacherNavProps) {
             <Button
               key={item.href}
               render={<Link href={`${base}${item.href}`} />}
+              nativeButton={false}
               variant={pathname.startsWith(`${base}${item.href}`) ? 'secondary' : 'ghost'}
               size="sm"
             >
@@ -64,6 +65,7 @@ export function TeacherNav({ locale, hasAdminAccess }: TeacherNavProps) {
           {hasAdminAccess && (
             <Button
               render={<Link href={`/${locale}/admin/dashboard`} />}
+              nativeButton={false}
               variant="outline"
               size="sm"
             >
@@ -75,6 +77,7 @@ export function TeacherNav({ locale, hasAdminAccess }: TeacherNavProps) {
           {/* Logout */}
           <Button
             render={<Link href={`/${locale}/login`} />}
+            nativeButton={false}
             variant="ghost"
             size="sm"
           >

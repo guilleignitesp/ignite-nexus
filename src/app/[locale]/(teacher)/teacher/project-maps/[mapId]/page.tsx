@@ -26,6 +26,7 @@ export default async function TeacherProjectMapDetailPage({
       <div>
         <Button
           render={<Link href={`/${locale}/teacher/project-maps`} />}
+          nativeButton={false}
           variant="ghost"
           size="sm"
           className="-ml-2 mb-1"

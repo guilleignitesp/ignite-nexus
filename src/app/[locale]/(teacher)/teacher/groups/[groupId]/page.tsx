@@ -45,6 +45,7 @@ export default async function TeacherGroupPage({
         <div className="flex-1">
           <Button
             render={<Link href={`/${locale}/teacher/home`} />}
+            nativeButton={false}
             variant="ghost"
             size="sm"
             className="-ml-2 mb-1"

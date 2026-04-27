@@ -24,6 +24,7 @@ export function QuickAccessBar({ locale }: QuickAccessBarProps) {
         <Button
           key={href}
           render={<Link href={href} />}
+          nativeButton={false}
           variant="outline"
           size="sm"
         >

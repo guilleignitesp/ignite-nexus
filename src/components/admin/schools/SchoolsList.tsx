@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl'
 import { ChevronDown, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import type { School, Worker } from '@/lib/data/schools'
+import type { School } from '@/lib/data/schools'
 import type { SchoolYear } from '@/lib/data/settings'
 import { AddSchoolDialog } from './AddSchoolDialog'
 import { AddGroupDialog } from './AddGroupDialog'
@@ -14,7 +14,6 @@ import { AddGroupDialog } from './AddGroupDialog'
 interface SchoolsListProps {
   schools: School[]
   schoolYears: SchoolYear[]
-  workers: Worker[]
   locale: string
 }
 
@@ -34,7 +33,7 @@ function formatSchedule(
     .join(', ')
 }
 
-export function SchoolsList({ schools, schoolYears, workers, locale }: SchoolsListProps) {
+export function SchoolsList({ schools, schoolYears, locale }: SchoolsListProps) {
   const t = useTranslations('schools')
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [addGroupOpen, setAddGroupOpen] = useState(false)
@@ -80,10 +79,12 @@ export function SchoolsList({ schools, schoolYears, workers, locale }: SchoolsLi
             const isExpanded = expandedIds.has(school.id)
             return (
               <div key={school.id} className="rounded-lg border">
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors"
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors"
                   onClick={() => toggleExpanded(school.id)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleExpanded(school.id) }}
                 >
                   <ChevronDown
                     className={cn(
@@ -109,7 +110,7 @@ export function SchoolsList({ schools, schoolYears, workers, locale }: SchoolsLi
                     <Plus />
                     {t('addGroupToSchool')}
                   </Button>
-                </button>
+                </div>
 
                 {isExpanded && (
                   <div className="border-t px-4 py-3">
@@ -153,6 +154,7 @@ export function SchoolsList({ schools, schoolYears, workers, locale }: SchoolsLi
                                 <Button
                                   size="sm"
                                   variant="ghost"
+                                  nativeButton={false}
                                   render={
                                     <Link
                                       href={`/${locale}/admin/schools/groups/${group.id}`}
@@ -181,7 +183,6 @@ export function SchoolsList({ schools, schoolYears, workers, locale }: SchoolsLi
         defaultSchoolId={addGroupSchoolId}
         schools={schools}
         schoolYears={schoolYears}
-        workers={workers}
       />
     </div>
   )

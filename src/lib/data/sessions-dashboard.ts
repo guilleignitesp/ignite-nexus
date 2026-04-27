@@ -24,8 +24,10 @@ export interface WeekSession {
   startTime: string
   endTime: string
   minTeachersRequired: number
-  status: 'pending' | 'completed' | 'suspended' | 'holiday'
+  status: 'pending' | 'completed' | 'suspended' | 'holiday' | 'cancelled'
   isConsolidated: boolean
+  projectId: string | null
+  projectName: string | null
   teacherChanges: {
     id: string
     workerId: string
@@ -78,6 +80,8 @@ type RawWeekSession = {
   min_teachers_required: number
   status: string
   is_consolidated: boolean
+  project_id: string | null
+  projects: { id: string; name: string } | null
   plannings: { group_id: string } | null
   session_teacher_assignments: {
     id: string
@@ -149,7 +153,7 @@ export async function getWeekSessions(
   const { data, error } = await supabase
     .from('sessions')
     .select(
-      'id, session_date, start_time, end_time, min_teachers_required, status, is_consolidated, plannings(group_id), session_teacher_assignments(id, worker_id, type, is_active)'
+      'id, session_date, start_time, end_time, min_teachers_required, status, is_consolidated, project_id, projects(id, name), plannings(group_id), session_teacher_assignments(id, worker_id, type, is_active)'
     )
     .gte('session_date', weekStart)
     .lte('session_date', weekEnd)
@@ -169,6 +173,8 @@ export async function getWeekSessions(
       minTeachersRequired: s.min_teachers_required ?? 1,
       status: s.status as WeekSession['status'],
       isConsolidated: s.is_consolidated ?? false,
+      projectId: s.project_id ?? null,
+      projectName: s.projects?.name ?? null,
       teacherChanges: (s.session_teacher_assignments ?? []).map((tc) => ({
         id: tc.id,
         workerId: tc.worker_id,

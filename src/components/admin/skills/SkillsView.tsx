@@ -66,10 +66,12 @@ export function SkillsView({ branches, locale }: SkillsViewProps) {
 
         return (
           <div key={branch.id} className="rounded-lg border">
-            <button
-              type="button"
-              className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors"
+            <div
+              role="button"
+              tabIndex={0}
+              className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors"
               onClick={() => toggleExpanded(branch.id)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleExpanded(branch.id) }}
             >
               <ChevronDown
                 className={cn(
@@ -109,7 +111,7 @@ export function SkillsView({ branches, locale }: SkillsViewProps) {
                 <Plus />
                 {t('addSkill')}
               </Button>
-            </button>
+            </div>
 
             {isExpanded && (
               <div className="border-t px-4 py-3">

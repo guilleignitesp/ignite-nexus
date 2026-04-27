@@ -9,9 +9,9 @@ import type {
   WeekSession,
   ActiveAssignment,
 } from '@/lib/data/sessions-dashboard'
-import { addDays, getMondayOf } from '@/lib/utils/week-helpers'
+import { addDays } from '@/lib/utils/week-helpers'
 import { WeekGrid } from './WeekGrid'
-import { SubstitutePanel } from './SubstitutePanel'
+import { SessionDetailPanel } from './SessionDetailPanel'
 import { PermanentAssignmentDialog } from './PermanentAssignmentDialog'
 import { AuditPanel } from './AuditPanel'
 
@@ -22,6 +22,12 @@ interface Props {
   weekStart: string
   today: string
   locale: string
+}
+
+interface SelectedSession {
+  session: WeekSession
+  groupName: string
+  schoolName: string
 }
 
 export function SessionsDashboard({
@@ -35,7 +41,7 @@ export function SessionsDashboard({
   const t = useTranslations('sessionsDashboard')
   const router = useRouter()
 
-  const [selectedSession, setSelectedSession] = useState<WeekSession | null>(null)
+  const [selectedSession, setSelectedSession] = useState<SelectedSession | null>(null)
   const [selectedGroupForPermanent, setSelectedGroupForPermanent] = useState<{
     id: string
     name: string
@@ -48,13 +54,11 @@ export function SessionsDashboard({
   }
 
   function prevWeek() {
-    const newWeekStart = addDays(weekStart, -7)
-    router.push(`/${locale}/admin/sessions?week=${newWeekStart}`)
+    router.push(`/${locale}/admin/sessions?week=${addDays(weekStart, -7)}`)
   }
 
   function nextWeek() {
-    const newWeekStart = addDays(weekStart, 7)
-    router.push(`/${locale}/admin/sessions?week=${newWeekStart}`)
+    router.push(`/${locale}/admin/sessions?week=${addDays(weekStart, 7)}`)
   }
 
   const weekLabel = new Date(`${weekStart}T12:00:00`).toLocaleDateString('es', {
@@ -86,27 +90,36 @@ export function SessionsDashboard({
         schools={schools}
         sessions={sessions}
         assignments={assignments}
-        workerNames={workerNames}
         weekStart={weekStart}
         today={today}
-        onSubstituteClick={(session) => setSelectedSession(session)}
+        onSessionClick={(session, groupName, schoolName) =>
+          setSelectedSession({ session, groupName, schoolName })
+        }
         onPermanentClick={(group) => setSelectedGroupForPermanent(group)}
       />
 
-      {/* Dialogs */}
+      {/* Session detail panel */}
       {selectedSession && (
-        <SubstitutePanel
-          session={selectedSession}
-          assignments={assignments.filter((a) => a.groupId === selectedSession.groupId)}
+        <SessionDetailPanel
+          session={selectedSession.session}
+          groupName={selectedSession.groupName}
+          schoolName={selectedSession.schoolName}
+          assignments={assignments.filter(
+            (a) => a.groupId === selectedSession.session.groupId
+          )}
+          workerNames={workerNames}
           onClose={() => setSelectedSession(null)}
         />
       )}
+
+      {/* Permanent assignment dialog (opened from grid or from detail panel) */}
       {selectedGroupForPermanent && (
         <PermanentAssignmentDialog
           group={selectedGroupForPermanent}
           onClose={() => setSelectedGroupForPermanent(null)}
         />
       )}
+
       <AuditPanel open={auditOpen} onClose={() => setAuditOpen(false)} />
     </div>
   )
