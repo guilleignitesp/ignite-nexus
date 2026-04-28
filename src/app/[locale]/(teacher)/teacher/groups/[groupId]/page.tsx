@@ -32,6 +32,16 @@ export default async function TeacherGroupPage({
 
   if (!detail) notFound()
 
+  const sessionTitle = detail.closestSession
+    ? t('sessionOfDate', {
+        date: new Date(detail.closestSession.sessionDate + 'T12:00:00').toLocaleDateString(locale, {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+        }),
+      })
+    : t('todaySessionTitle')
+
   const scheduleText = detail.schedule.length > 0
     ? detail.schedule
         .map((s) => `${WEEKDAY[s.weekday] ?? s.weekday} ${formatTime(s.startTime)}–${formatTime(s.endTime)}`)
@@ -67,20 +77,23 @@ export default async function TeacherGroupPage({
 
       {/* Sección 1: Sesión de hoy */}
       <section>
-        <h2 className="mb-3 text-lg font-semibold">{t('todaySessionTitle')}</h2>
+        <h2 className="mb-3 text-lg font-semibold">{sessionTitle}</h2>
         {!detail.planning ? (
           <p className="text-sm text-muted-foreground">{t('noPlanning')}</p>
-        ) : !detail.isClassToday ? (
-          <p className="text-sm text-muted-foreground">{t('noClassToday')}</p>
         ) : (
           <TodaySessionSection
             groupId={detail.groupId}
             planningId={detail.planning.planningId}
             currentProjectId={detail.planning.currentProjectId}
+            currentProjectName={detail.planning.currentProjectName}
             todaySlot={detail.todaySlot}
+            isClassToday={detail.isClassToday}
             students={detail.students}
-            session={detail.todaySession}
+            session={detail.closestSession}
+            sessionDate={detail.closestSession?.sessionDate ?? null}
+            nextSessionDate={detail.closestSession?.sessionDate ?? null}
             successors={detail.planning.successors}
+            groupSchedule={detail.schedule}
           />
         )}
       </section>
@@ -88,7 +101,11 @@ export default async function TeacherGroupPage({
       {/* Sección 2: Historial de sesiones */}
       <section>
         <h2 className="mb-3 text-lg font-semibold">{t('sessionHistoryTitle')}</h2>
-        <SessionHistoryList sessions={detail.recentSessions} />
+        <SessionHistoryList
+          sessions={detail.recentSessions}
+          students={detail.students}
+          groupId={detail.groupId}
+        />
       </section>
 
       {/* Sección 3: Mapa de proyectos */}

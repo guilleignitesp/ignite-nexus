@@ -98,7 +98,6 @@ export function SessionDetailPanel({
   }
 
   function handleStatusChange(status: string) {
-    if (isLocked) return
     setError(null)
     startTransition(async () => {
       try {
@@ -114,7 +113,6 @@ export function SessionDetailPanel({
   }
 
   function handleProjectChange(projectId: string) {
-    if (isLocked) return
     setSelectedProject(projectId)
     setError(null)
     startTransition(async () => {
@@ -129,7 +127,6 @@ export function SessionDetailPanel({
 
   function handleMinTeachersSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (isLocked) return
     const val = parseInt(minTeachers, 10)
     if (isNaN(val) || val < 1) return
     setError(null)
@@ -144,7 +141,6 @@ export function SessionDetailPanel({
   }
 
   function handleMarkAbsent(workerId: string) {
-    if (isLocked) return
     setError(null)
     startTransition(async () => {
       try {
@@ -158,7 +154,6 @@ export function SessionDetailPanel({
   }
 
   function handleUnmarkAbsent(absenceId: string) {
-    if (isLocked) return
     setError(null)
     startTransition(async () => {
       try {
@@ -172,7 +167,6 @@ export function SessionDetailPanel({
   }
 
   function handleRemoveSubstitute(assignmentId: string) {
-    if (isLocked) return
     setError(null)
     startTransition(async () => {
       try {
@@ -241,7 +235,7 @@ export function SessionDetailPanel({
             <select
               value={session.status}
               onChange={(e) => handleStatusChange(e.target.value)}
-              disabled={isLocked || isPending}
+              disabled={isPending}
               style={{
                 width: '100%',
                 height: '2rem',
@@ -251,7 +245,6 @@ export function SessionDetailPanel({
                 padding: '0 0.5rem',
                 fontSize: '0.875rem',
                 outline: 'none',
-                opacity: isLocked ? 0.5 : 1,
               }}
             >
               {SESSION_STATUSES.map((s) => (
@@ -269,7 +262,7 @@ export function SessionDetailPanel({
               <select
                 value={selectedProject}
                 onChange={(e) => handleProjectChange(e.target.value)}
-                disabled={isLocked || isPending}
+                disabled={isPending}
                 style={{
                   width: '100%',
                   height: '2rem',
@@ -279,7 +272,6 @@ export function SessionDetailPanel({
                   padding: '0 0.5rem',
                   fontSize: '0.875rem',
                   outline: 'none',
-                  opacity: isLocked ? 0.5 : 1,
                 }}
               >
                 <option value="">{t('noProject')}</option>
@@ -300,7 +292,7 @@ export function SessionDetailPanel({
                 max={10}
                 value={minTeachers}
                 onChange={(e) => setMinTeachers(e.target.value)}
-                disabled={isLocked || isPending}
+                disabled={isPending}
                 style={{
                   width: '5rem',
                   height: '2rem',
@@ -310,14 +302,11 @@ export function SessionDetailPanel({
                   padding: '0 0.5rem',
                   fontSize: '0.875rem',
                   outline: 'none',
-                  opacity: isLocked ? 0.5 : 1,
                 }}
               />
-              {!isLocked && (
-                <Button type="submit" size="sm" disabled={isPending}>
-                  {t('save')}
-                </Button>
-              )}
+              <Button type="submit" size="sm" disabled={isPending}>
+                {t('save')}
+              </Button>
             </form>
           </section>
 
@@ -366,31 +355,24 @@ export function SessionDetailPanel({
                       >
                         {a.workerFirstName} {a.workerLastName}
                       </span>
-                      {!isLocked && (
-                        isAbsent && absenceSTA ? (
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            onClick={() => handleUnmarkAbsent(absenceSTA.id)}
-                            disabled={isPending}
-                          >
-                            {t('unmarkAbsent')}
-                          </Button>
-                        ) : (
-                          <Button
-                            size="xs"
-                            variant="destructive"
-                            onClick={() => handleMarkAbsent(a.workerId)}
-                            disabled={isPending}
-                          >
-                            {t('markAbsent')}
-                          </Button>
-                        )
-                      )}
-                      {isLocked && isAbsent && (
-                        <Badge variant="destructive" style={{ fontSize: '0.6rem' }}>
-                          {t('absent')}
-                        </Badge>
+                      {isAbsent && absenceSTA ? (
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          onClick={() => handleUnmarkAbsent(absenceSTA.id)}
+                          disabled={isPending}
+                        >
+                          {t('unmarkAbsent')}
+                        </Button>
+                      ) : (
+                        <Button
+                          size="xs"
+                          variant="destructive"
+                          onClick={() => handleMarkAbsent(a.workerId)}
+                          disabled={isPending}
+                        >
+                          {t('markAbsent')}
+                        </Button>
                       )}
                     </div>
                   )
@@ -421,30 +403,26 @@ export function SessionDetailPanel({
                     <span style={{ fontSize: '0.875rem', color: 'var(--primary)', fontStyle: 'italic' }}>
                       ↪ {workerNames.get(sub.workerId) ?? `#${sub.workerId.slice(0, 6)}`}
                     </span>
-                    {!isLocked && (
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        onClick={() => handleRemoveSubstitute(sub.id)}
-                        disabled={isPending}
-                      >
-                        {t('removeSubstitute')}
-                      </Button>
-                    )}
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      onClick={() => handleRemoveSubstitute(sub.id)}
+                      disabled={isPending}
+                    >
+                      {t('removeSubstitute')}
+                    </Button>
                   </div>
                 ))}
               </div>
             )}
-            {!isLocked && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="w-full"
-                onClick={() => setSubstituteOpen(true)}
-              >
-                + {t('addSubstitute')}
-              </Button>
-            )}
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full"
+              onClick={() => setSubstituteOpen(true)}
+            >
+              + {t('addSubstitute')}
+            </Button>
           </section>
 
         </div>

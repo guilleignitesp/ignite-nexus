@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import Link from 'next/link'
@@ -30,6 +31,7 @@ export function StudentsList({
   const t = useTranslations('students')
   const router = useRouter()
   const pathname = usePathname()
+  const [searchValue, setSearchValue] = useState(search)
 
   const totalPages = Math.ceil(total / limit)
 
@@ -40,10 +42,9 @@ export function StudentsList({
     router.push(`${pathname}?${sp.toString()}`)
   }
 
-  function handleSearch(e: React.FormEvent<HTMLFormElement>) {
+  function handleSearch(e: React.SyntheticEvent) {
     e.preventDefault()
-    const formData = new FormData(e.currentTarget)
-    pushParams({ search: (formData.get('search') as string) ?? '', page: '0' })
+    pushParams({ search: searchValue, page: '0' })
   }
 
   return (
@@ -53,7 +54,8 @@ export function StudentsList({
         <form onSubmit={handleSearch} className="flex items-center gap-2">
           <Input
             name="search"
-            defaultValue={search}
+            value={searchValue}
+            onChange={(e) => setSearchValue(e.target.value)}
             placeholder={t('searchPlaceholder')}
             className="h-8 w-64"
           />

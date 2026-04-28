@@ -59,7 +59,6 @@ export function GroupDayCell({
           <button
             key={session.id}
             onClick={() => onSessionClick(session)}
-            disabled={session.isConsolidated}
             style={{
               display: 'block',
               width: '100%',
@@ -67,11 +66,8 @@ export function GroupDayCell({
               border: '1px solid var(--border)',
               borderRadius: '0.375rem',
               padding: '0.375rem 0.5rem',
-              backgroundColor: session.isConsolidated
-                ? 'var(--muted)'
-                : 'var(--background)',
-              cursor: session.isConsolidated ? 'default' : 'pointer',
-              opacity: session.isConsolidated ? 0.7 : 1,
+              backgroundColor: 'var(--background)',
+              cursor: 'pointer',
             }}
           >
             {/* Group + time row */}

@@ -36,6 +36,7 @@ export interface EnrolledStudent {
 
 export interface TodaySession {
   sessionId: string
+  sessionDate: string
   status: SessionStatus
   trafficLight: TrafficLight | null
   teacherComment: string | null
@@ -84,7 +85,7 @@ export interface GroupDetail {
   schedule: ScheduleSlot[]
   students: EnrolledStudent[]
   planning: GroupPlanningData | null
-  todaySession: TodaySession | null
+  closestSession: TodaySession | null
   /** true si hoy es un día de clase según el horario del grupo */
   isClassToday: boolean
   /** Horario del día de hoy si hay clase */
@@ -149,6 +150,7 @@ type RawAssignment = {
 
 type RawTodaySession = {
   id: string
+  session_date: string
   status: string
   traffic_light: string | null
   teacher_comment: string | null
@@ -174,9 +176,6 @@ function jsWeekday(): number {
   return day === 0 ? 7 : day  // Dom→7, el resto coincide
 }
 
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10)
-}
 
 function latestLog(logs: RawProjectLog[]): RawProjectLog | null {
   if (!logs || logs.length === 0) return null
@@ -355,22 +354,27 @@ export async function getGroupDetail(
     }
   }
 
-  // Step 2: parallel — today's session + recent history
-  const today = todayISO()
+  // Step 2: parallel — closest session + recent history
   const planningId = planning?.planningId ?? null
 
-  const [sessionResult, historyResult] = planningId
-    ? await Promise.all([
-        supabase
-          .from('sessions')
-          .select(`
-            id, status, traffic_light, teacher_comment, is_consolidated,
-            session_attendances(student_id, attended)
-          `)
-          .eq('planning_id', planningId)
-          .eq('session_date', today)
-          .maybeSingle(),
+  // Oldest non-completed session — teacher works through backlog in chronological order
+  async function fetchClosestSession(pid: string): Promise<RawTodaySession | null> {
+    const sel = `id, session_date, status, traffic_light, teacher_comment, is_consolidated,
+      session_attendances(student_id, attended)`
+    const { data } = await supabase
+      .from('sessions')
+      .select(sel)
+      .eq('planning_id', pid)
+      .not('status', 'in', '(completed,unknown,excused)')
+      .order('session_date', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    return data as unknown as RawTodaySession | null
+  }
 
+  const [rawClosest, historyResult] = planningId
+    ? await Promise.all([
+        fetchClosestSession(planningId),
         supabase
           .from('sessions')
           .select(`
@@ -378,21 +382,21 @@ export async function getGroupDetail(
             projects(name)
           `)
           .eq('planning_id', planningId)
-          .neq('status', 'pending')
+          .eq('status', 'completed')
           .order('session_date', { ascending: false })
           .limit(20),
       ])
-    : [{ data: null, error: null }, { data: [], error: null }]
+    : [null, { data: [], error: null }]
 
-  const rawToday = sessionResult.data as RawTodaySession | null
-  const todaySession: TodaySession | null = rawToday
+  const closestSession: TodaySession | null = rawClosest
     ? {
-        sessionId: rawToday.id,
-        status: rawToday.status as SessionStatus,
-        trafficLight: rawToday.traffic_light as TrafficLight | null,
-        teacherComment: rawToday.teacher_comment,
-        isConsolidated: rawToday.is_consolidated,
-        attendances: (rawToday.session_attendances ?? []).map((a) => ({
+        sessionId: rawClosest.id,
+        sessionDate: rawClosest.session_date,
+        status: rawClosest.status as SessionStatus,
+        trafficLight: rawClosest.traffic_light as TrafficLight | null,
+        teacherComment: rawClosest.teacher_comment,
+        isConsolidated: rawClosest.is_consolidated,
+        attendances: (rawClosest.session_attendances ?? []).map((a) => ({
           studentId: a.student_id,
           attended: a.attended,
         })),
@@ -418,7 +422,7 @@ export async function getGroupDetail(
     schedule,
     students,
     planning,
-    todaySession,
+    closestSession,
     isClassToday,
     todaySlot: todaySlotRaw,
     recentSessions,

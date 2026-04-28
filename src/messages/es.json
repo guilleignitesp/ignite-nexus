@@ -508,7 +508,8 @@
     "noSchedule": "Sin horario configurado",
     "noPlanning": "Este grupo no tiene planificación activa",
     "noClassToday": "Hoy no hay clase programada",
-    "todaySessionTitle": "Sesión de hoy",
+    "todaySessionTitle": "Próxima sesión",
+    "sessionOfDate": "Sesión del {date}",
     "startSession": "Iniciar clase",
     "starting": "Iniciando...",
     "attendanceTitle": "Lista de asistencia",
@@ -552,7 +553,21 @@
     "attendedCount": "{attended} / {total} presentes",
     "noAttendanceHistory": "Sin historial de asistencias",
     "absentLabel": "Ausentes",
-    "presentLabel": "Presentes"
+    "presentLabel": "Presentes",
+    "editSession": "Editar",
+    "closeEdit": "Cerrar",
+    "sessionNumber": "Sesión {n} del proyecto",
+    "hoursProgressFull": "Recomendadas: {recommended}h · Impartidas: {logged}h",
+    "hoursProgressLogged": "Impartidas: {logged}h",
+    "overdueWarning": "⚠️ Tienes información pendiente de la sesión del {date}. Complétala antes de continuar.",
+    "sessionDateLabel": "Sesión del {date}",
+    "statusUnknown": "Desconocida",
+    "statusExcused": "Cancelada",
+    "markUnknownLabel": "No se realizó",
+    "markExcusedLabel": "Clase cancelada",
+    "markUnknownConfirm": "¿Marcar esta sesión como desconocida? No se registrará asistencia ni avance del proyecto.",
+    "markExcusedConfirm": "¿Marcar esta sesión como clase cancelada? No se registrará asistencia.",
+    "nextSessionInfo": "Próxima sesión: {date}"
   },
   "teacherProjectMaps": {
     "pageTitle": "Mapas de proyectos",
@@ -763,7 +778,9 @@
       "completed": "Completada",
       "suspended": "Suspendida",
       "holiday": "Festivo",
-      "cancelled": "Cancelada"
+      "cancelled": "Cancelada",
+      "unknown": "Desconocida",
+      "excused": "Excusada"
     },
     "noProject": "Sin proyecto",
     "substitutesBadge": "sustitutos",

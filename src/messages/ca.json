@@ -508,7 +508,8 @@
     "noSchedule": "Sense horari configurat",
     "noPlanning": "Aquest grup no té planificació activa",
     "noClassToday": "Avui no hi ha classe programada",
-    "todaySessionTitle": "Sessió d'avui",
+    "todaySessionTitle": "Propera sessió",
+    "sessionOfDate": "Sessió del {date}",
     "startSession": "Iniciar classe",
     "starting": "Iniciant...",
     "attendanceTitle": "Llista d'assistència",
@@ -552,7 +553,21 @@
     "attendedCount": "{attended} / {total} presents",
     "noAttendanceHistory": "Sense historial d'assistències",
     "absentLabel": "Absents",
-    "presentLabel": "Presents"
+    "presentLabel": "Presents",
+    "editSession": "Edita",
+    "closeEdit": "Tanca",
+    "sessionNumber": "Sessió {n} del projecte",
+    "hoursProgressFull": "Recomanades: {recommended}h · Impartides: {logged}h",
+    "hoursProgressLogged": "Impartides: {logged}h",
+    "overdueWarning": "⚠️ Tens informació pendent de la sessió del {date}. Completa-la abans de continuar.",
+    "sessionDateLabel": "Sessió del {date}",
+    "statusUnknown": "Desconeguda",
+    "statusExcused": "Cancel·lada",
+    "markUnknownLabel": "No es va fer",
+    "markExcusedLabel": "Classe cancel·lada",
+    "markUnknownConfirm": "Marcar aquesta sessió com a desconeguda? No es registrarà assistència ni avanç del projecte.",
+    "markExcusedConfirm": "Marcar aquesta sessió com a classe cancel·lada? No es registrarà assistència.",
+    "nextSessionInfo": "Propera sessió: {date}"
   },
   "teacherProjectMaps": {
     "pageTitle": "Mapes de projectes",
@@ -763,7 +778,9 @@
       "completed": "Completada",
       "suspended": "Suspesa",
       "holiday": "Festiu",
-      "cancelled": "Cancel·lada"
+      "cancelled": "Cancel·lada",
+      "unknown": "Desconeguda",
+      "excused": "Excusada"
     },
     "noProject": "Sense projecte",
     "substitutesBadge": "substituts",

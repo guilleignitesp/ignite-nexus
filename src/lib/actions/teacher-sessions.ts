@@ -32,10 +32,11 @@ export async function createTodaySession(input: {
   startTime: string
   endTime: string
   studentIds: string[]
+  sessionDate?: string
 }): Promise<{ sessionId: string }> {
   await assertTeacherOwnsGroup(input.groupId)
 
-  const today = new Date().toISOString().slice(0, 10)
+  const sessionDate = input.sessionDate ?? new Date().toISOString().slice(0, 10)
   const supabase = await createClient()
 
   // Upsert — no-op si ya existe (unique index planning_id + session_date)
@@ -45,7 +46,7 @@ export async function createTodaySession(input: {
       {
         planning_id: input.planningId,
         project_id: input.projectId,
-        session_date: today,
+        session_date: sessionDate,
         start_time: input.startTime,
         end_time: input.endTime,
         status: 'pending',
@@ -80,15 +81,19 @@ export async function saveSession(input: {
   groupId: string
   teacherComment: string | null
   attendances: { studentId: string; attended: boolean }[]
+  trafficLight?: TrafficLight
 }): Promise<void> {
   await assertTeacherOwnsGroup(input.groupId)
 
   const supabase = await createClient()
 
-  // Actualizar comentario del profesor
+  // Actualizar sesión (comentario + semáforo opcional)
   const { error: sErr } = await supabase
     .from('sessions')
-    .update({ teacher_comment: input.teacherComment || null })
+    .update({
+      teacher_comment: input.teacherComment || null,
+      ...(input.trafficLight !== undefined && { traffic_light: input.trafficLight }),
+    })
     .eq('id', input.sessionId)
 
   if (sErr) throw new Error(sErr.message)
@@ -160,6 +165,103 @@ export async function finalizeSession(input: {
         status: 'pending',
       })
     if (lErr) throw new Error(lErr.message)
+  }
+}
+
+// ─── markSessionUnknown ───────────────────────────────────────────────────
+
+export async function markSessionUnknown(
+  sessionId: string,
+  groupId: string
+): Promise<void> {
+  await assertTeacherOwnsGroup(groupId)
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('sessions')
+    .update({
+      status: 'unknown',
+      is_consolidated: true,
+      consolidated_at: new Date().toISOString(),
+    })
+    .eq('id', sessionId)
+  if (error) throw new Error(error.message)
+}
+
+// ─── markSessionExcused ───────────────────────────────────────────────────
+
+export async function markSessionExcused(
+  sessionId: string,
+  groupId: string
+): Promise<void> {
+  await assertTeacherOwnsGroup(groupId)
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('sessions')
+    .update({
+      status: 'excused',
+      is_consolidated: true,
+      consolidated_at: new Date().toISOString(),
+    })
+    .eq('id', sessionId)
+  if (error) throw new Error(error.message)
+}
+
+// ─── getProjectDetails (carga lazy de info del proyecto activo) ───────────
+
+function parseTimeToHours(t: string): number {
+  const [h, m, s] = t.split(':').map(Number)
+  return h + m / 60 + (s || 0) / 3600
+}
+
+export async function getProjectDetails(
+  projectId: string,
+  planningId: string
+): Promise<{
+  description: string | null
+  resources: { title: string; url: string; type: string }[]
+  recommendedHours: number | null
+  sessionNumber: number
+  hoursLogged: number
+} | null> {
+  const supabase = await createClient()
+
+  const [projectResult, sessionsResult] = await Promise.all([
+    supabase
+      .from('projects')
+      .select('recommended_hours, description, project_resources(title, url, type)')
+      .eq('id', projectId)
+      .maybeSingle(),
+    supabase
+      .from('sessions')
+      .select('start_time, end_time')
+      .eq('planning_id', planningId)
+      .eq('project_id', projectId)
+      .eq('status', 'completed'),
+  ])
+
+  if (projectResult.error || !projectResult.data) return null
+
+  const raw = projectResult.data as unknown as {
+    recommended_hours: string | number | null
+    description: string | null
+    project_resources: { title: string; url: string; type: string }[]
+  }
+
+  const completedSessions = (sessionsResult.data ?? []) as unknown as {
+    start_time: string
+    end_time: string
+  }[]
+
+  const hoursLogged = completedSessions.reduce((sum, s) => {
+    return sum + Math.max(0, parseTimeToHours(s.end_time) - parseTimeToHours(s.start_time))
+  }, 0)
+
+  return {
+    description: raw.description,
+    resources: raw.project_resources ?? [],
+    recommendedHours: raw.recommended_hours != null ? Number(raw.recommended_hours) : null,
+    sessionNumber: completedSessions.length + 1,
+    hoursLogged,
   }
 }
 

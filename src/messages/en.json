@@ -508,7 +508,8 @@
     "noSchedule": "No schedule configured",
     "noPlanning": "This group has no active planning",
     "noClassToday": "No class scheduled today",
-    "todaySessionTitle": "Today's session",
+    "todaySessionTitle": "Upcoming session",
+    "sessionOfDate": "Session — {date}",
     "startSession": "Start class",
     "starting": "Starting...",
     "attendanceTitle": "Attendance",
@@ -552,7 +553,21 @@
     "attendedCount": "{attended} / {total} present",
     "noAttendanceHistory": "No attendance history",
     "absentLabel": "Absent",
-    "presentLabel": "Present"
+    "presentLabel": "Present",
+    "editSession": "Edit",
+    "closeEdit": "Close",
+    "sessionNumber": "Session {n}",
+    "hoursProgressFull": "Recommended: {recommended}h · Done: {logged}h",
+    "hoursProgressLogged": "Done: {logged}h",
+    "overdueWarning": "⚠️ You have pending information from the session on {date}. Complete it before continuing.",
+    "sessionDateLabel": "Session of {date}",
+    "statusUnknown": "Unknown",
+    "statusExcused": "Cancelled",
+    "markUnknownLabel": "Not held",
+    "markExcusedLabel": "Class cancelled",
+    "markUnknownConfirm": "Mark this session as unknown? Attendance and project progress will not be recorded.",
+    "markExcusedConfirm": "Mark this session as cancelled? Attendance will not be recorded.",
+    "nextSessionInfo": "Next session: {date}"
   },
   "teacherProjectMaps": {
     "pageTitle": "Project maps",
@@ -763,7 +778,9 @@
       "completed": "Completed",
       "suspended": "Suspended",
       "holiday": "Holiday",
-      "cancelled": "Cancelled"
+      "cancelled": "Cancelled",
+      "unknown": "Unknown",
+      "excused": "Excused"
     },
     "noProject": "No project",
     "substitutesBadge": "substitutes",
