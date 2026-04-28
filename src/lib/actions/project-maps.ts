@@ -27,7 +27,7 @@ export async function createProjectMap(name: string, description: string): Promi
 
 interface SaveMapInput {
   nodes: { projectId: string }[]
-  edges: { fromProjectId: string; toProjectId: string }[]
+  edges: { fromProjectId: string; toProjectId: string; percentage: number | null; label: string | null }[]
   initialProjectId: string | null
 }
 
@@ -66,6 +66,8 @@ export async function saveProjectMap(mapId: string, input: SaveMapInput): Promis
         map_id: mapId,
         from_project_id: e.fromProjectId,
         to_project_id: e.toProjectId,
+        percentage: e.percentage,
+        label: e.label,
       }))
     )
     if (error) throw new Error(error.message)

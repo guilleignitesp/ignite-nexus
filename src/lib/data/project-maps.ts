@@ -20,6 +20,8 @@ export interface MapNodeDetail {
 export interface MapEdgeDetail {
   fromProjectId: string
   toProjectId: string
+  percentage: number | null
+  label: string | null
 }
 
 export interface MapDetail {
@@ -81,6 +83,8 @@ type RawMapDetail = {
   project_map_edges: {
     from_project_id: string
     to_project_id: string
+    percentage: number | null
+    label: string | null
   }[]
 }
 
@@ -91,7 +95,7 @@ export async function getProjectMapDetail(id: string): Promise<MapDetail | null>
     .select(
       `id, name, description, is_active, initial_project_id,
       project_map_nodes(project_id, projects(id, name, material_type, recommended_hours)),
-      project_map_edges(from_project_id, to_project_id)`
+      project_map_edges(from_project_id, to_project_id, percentage, label)`
     )
     .eq('id', id)
     .single()
@@ -112,6 +116,8 @@ export async function getProjectMapDetail(id: string): Promise<MapDetail | null>
     edges: (raw.project_map_edges ?? []).map((e) => ({
       fromProjectId: e.from_project_id,
       toProjectId: e.to_project_id,
+      percentage: e.percentage,
+      label: e.label,
     })),
   }
 }

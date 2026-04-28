@@ -7,6 +7,7 @@ import { Plus, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
   DialogClose,
@@ -22,6 +23,7 @@ import {
   enrollStudentInGroup,
   unenrollStudentFromGroup,
   createGroupPlanning,
+  createAndEnrollStudent,
 } from '@/lib/actions/schools'
 import type { GroupAdminDetail } from '@/lib/data/schools'
 
@@ -37,7 +39,13 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: 'bg-gray-100 text-gray-700',
 }
 
-type SearchResult = { id: string; firstName: string; lastName: string }
+type SearchResultItem = {
+  id: string
+  firstName: string
+  lastName: string
+  status: 'active' | 'inactive'
+  alreadyEnrolled: boolean
+}
 
 interface Props {
   group: GroupAdminDetail
@@ -50,11 +58,20 @@ export function GroupDetailClient({ group }: Props) {
 
   const [permanentDialogOpen, setPermanentDialogOpen] = useState(false)
 
-  // Students
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  // Add student dialog
+  const [addStudentOpen, setAddStudentOpen] = useState(false)
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [searchResults, setSearchResults] = useState<SearchResultItem[]>([])
+  const [searched, setSearched] = useState(false)
   const [searching, setSearching] = useState(false)
+  const [showCreateOption, setShowCreateOption] = useState(false)
   const [enrollingId, setEnrollingId] = useState<string | null>(null)
+  const [creatingStudent, setCreatingStudent] = useState(false)
+  const [dialogError, setDialogError] = useState<string | null>(null)
+
+  // Unenroll confirmation
+  const [unenrollConfirmId, setUnenrollConfirmId] = useState<string | null>(null)
   const [unenrollingId, setUnenrollingId] = useState<string | null>(null)
 
   // Planning
@@ -64,31 +81,63 @@ export function GroupDetailClient({ group }: Props) {
 
   const [error, setError] = useState<string | null>(null)
 
-  async function handleStudentSearch(e: React.FormEvent) {
+  function resetDialog() {
+    setFirstName('')
+    setLastName('')
+    setSearchResults([])
+    setSearched(false)
+    setShowCreateOption(false)
+    setDialogError(null)
+  }
+
+  async function handleStudentSearch(e: React.SyntheticEvent) {
     e.preventDefault()
+    if (!firstName.trim() && !lastName.trim()) return
     setSearching(true)
-    setError(null)
+    setDialogError(null)
+    setShowCreateOption(false)
     try {
-      const results = await searchStudentsForEnrollment(searchQuery, group.id)
+      const results = await searchStudentsForEnrollment(firstName, lastName, group.id)
       setSearchResults(results)
+      setSearched(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error')
+      setDialogError(err instanceof Error ? err.message : 'Error')
     } finally {
       setSearching(false)
     }
   }
 
-  async function handleEnroll(student: SearchResult) {
+  async function handleEnroll(student: SearchResultItem) {
     setEnrollingId(student.id)
-    setError(null)
+    setDialogError(null)
     try {
       await enrollStudentInGroup(group.id, student.id)
-      setSearchResults((prev) => prev.filter((s) => s.id !== student.id))
+      setAddStudentOpen(false)
+      resetDialog()
       router.refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error')
+      setDialogError(err instanceof Error ? err.message : 'Error')
     } finally {
       setEnrollingId(null)
+    }
+  }
+
+  async function handleCreateAndEnroll() {
+    setCreatingStudent(true)
+    setDialogError(null)
+    try {
+      await createAndEnrollStudent({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        groupId: group.id,
+      })
+      setAddStudentOpen(false)
+      resetDialog()
+      router.refresh()
+    } catch (err) {
+      setDialogError(err instanceof Error ? err.message : 'Error')
+    } finally {
+      setCreatingStudent(false)
     }
   }
 
@@ -97,6 +146,7 @@ export function GroupDetailClient({ group }: Props) {
     setError(null)
     try {
       await unenrollStudentFromGroup(enrollmentId)
+      setUnenrollConfirmId(null)
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error')
@@ -119,6 +169,10 @@ export function GroupDetailClient({ group }: Props) {
       }
     })
   }
+
+  const alreadyEnrolledResults = searchResults.filter((r) => r.alreadyEnrolled)
+  const nonEnrolledResults = searchResults.filter((r) => !r.alreadyEnrolled)
+  const showCreateButton = searched && (nonEnrolledResults.length === 0 || showCreateOption)
 
   return (
     <div className="space-y-8">
@@ -166,62 +220,67 @@ export function GroupDetailClient({ group }: Props) {
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold">{t('studentsTitle')}</h2>
-          <span className="text-sm text-muted-foreground">
-            {t('studentCount', { count: group.students.length })}
-          </span>
-        </div>
-
-        <form onSubmit={handleStudentSearch} className="flex gap-2">
-          <Input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t('searchStudentPlaceholder')}
-            className="max-w-xs"
-          />
-          <Button type="submit" size="sm" disabled={searching}>
-            {searching ? t('searching') : t('search')}
-          </Button>
-        </form>
-
-        {searchResults.length > 0 && (
-          <div className="divide-y rounded-lg border">
-            {searchResults.map((student) => (
-              <div key={student.id} className="flex items-center justify-between px-3 py-2">
-                <span className="text-sm">
-                  {student.firstName} {student.lastName}
-                </span>
-                <Button
-                  size="xs"
-                  onClick={() => handleEnroll(student)}
-                  disabled={enrollingId === student.id}
-                >
-                  {enrollingId === student.id ? t('enrolling') : t('enroll')}
-                </Button>
-              </div>
-            ))}
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground">
+              {t('studentCount', { count: group.students.length })}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => { resetDialog(); setAddStudentOpen(true) }}
+            >
+              <Plus />
+              {t('addStudent')}
+            </Button>
           </div>
-        )}
+        </div>
 
         {group.students.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('noStudents')}</p>
         ) : (
           <div className="divide-y rounded-lg border">
             {group.students.map((student) => (
-              <div
-                key={student.enrollmentId}
-                className="flex items-center justify-between px-3 py-2"
-              >
-                <span className="text-sm">
-                  {student.firstName} {student.lastName}
-                </span>
-                <Button
-                  size="xs"
-                  variant="outline"
-                  onClick={() => handleUnenroll(student.enrollmentId)}
-                  disabled={unenrollingId === student.enrollmentId}
-                >
-                  {unenrollingId === student.enrollmentId ? '...' : t('unenroll')}
-                </Button>
+              <div key={student.enrollmentId} className="px-3 py-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">
+                    {student.firstName} {student.lastName}
+                  </span>
+                  {unenrollConfirmId !== student.enrollmentId && (
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      onClick={() => setUnenrollConfirmId(student.enrollmentId)}
+                      disabled={unenrollingId === student.enrollmentId}
+                    >
+                      {t('unenroll')}
+                    </Button>
+                  )}
+                </div>
+                {unenrollConfirmId === student.enrollmentId && (
+                  <div className="mt-2 rounded-md border bg-muted/30 p-2.5 space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      {t('unenrollConfirm', { name: `${student.firstName} ${student.lastName}` })}
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        size="xs"
+                        variant="destructive"
+                        onClick={() => handleUnenroll(student.enrollmentId)}
+                        disabled={unenrollingId === student.enrollmentId}
+                      >
+                        {unenrollingId === student.enrollmentId ? '...' : t('confirmUnenroll')}
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        onClick={() => setUnenrollConfirmId(null)}
+                        disabled={unenrollingId === student.enrollmentId}
+                      >
+                        {t('cancelUnenroll')}
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -312,6 +371,126 @@ export function GroupDetailClient({ group }: Props) {
         />
       )}
 
+      {/* Add student dialog */}
+      <Dialog
+        open={addStudentOpen}
+        onOpenChange={(open) => {
+          if (!open) resetDialog()
+          setAddStudentOpen(open)
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('addStudent')}</DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleStudentSearch} className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <Label>{t('firstNameLabel')}</Label>
+                <Input
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>{t('lastNameLabel')}</Label>
+                <Input
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                />
+              </div>
+            </div>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={searching || (!firstName.trim() && !lastName.trim())}
+            >
+              {searching ? t('searching') : t('search')}
+            </Button>
+          </form>
+
+          {searched && (
+            <div className="space-y-3">
+              {/* Already enrolled */}
+              {alreadyEnrolledResults.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {t('alreadyEnrolledSection')}
+                  </p>
+                  {alreadyEnrolledResults.map((s) => (
+                    <div
+                      key={s.id}
+                      className="flex items-center rounded-md border px-3 py-2 text-sm text-muted-foreground"
+                    >
+                      {s.lastName}, {s.firstName}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Existing students not yet enrolled */}
+              {nonEnrolledResults.length > 0 && !showCreateOption && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {t('existingStudentsSection')}
+                  </p>
+                  {nonEnrolledResults.map((s) => (
+                    <div
+                      key={s.id}
+                      className="flex items-center justify-between rounded-md border px-3 py-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">{s.lastName}, {s.firstName}</span>
+                        {s.status === 'inactive' && (
+                          <Badge variant="secondary" className="text-xs">
+                            {t('inactiveBadge')}
+                          </Badge>
+                        )}
+                      </div>
+                      <Button
+                        size="xs"
+                        onClick={() => handleEnroll(s)}
+                        disabled={enrollingId === s.id}
+                      >
+                        {enrollingId === s.id ? t('addingToGroup') : t('addToGroup')}
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-muted-foreground"
+                    onClick={() => setShowCreateOption(true)}
+                  >
+                    {t('noneOfThese')}
+                  </Button>
+                </div>
+              )}
+
+              {/* Create new student */}
+              {showCreateButton && (
+                <div className="space-y-2">
+                  {nonEnrolledResults.length === 0 && (
+                    <p className="text-sm text-muted-foreground">{t('noSearchResults')}</p>
+                  )}
+                  <Button
+                    size="sm"
+                    onClick={handleCreateAndEnroll}
+                    disabled={creatingStudent || (!firstName.trim() && !lastName.trim())}
+                  >
+                    {creatingStudent ? t('creatingStudent') : t('createNewStudent')}
+                  </Button>
+                </div>
+              )}
+
+              {dialogError && <p className="text-sm text-destructive">{dialogError}</p>}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign map dialog */}
       <Dialog open={assignMapOpen} onOpenChange={setAssignMapOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>

@@ -484,7 +484,13 @@
     "noAvailableProjects": "No hay proyectos para añadir",
     "setAsInitial": "Marcar como inicial",
     "removeFromMap": "Eliminar del mapa",
-    "removeConnection": "Eliminar conexión"
+    "removeConnection": "Eliminar conexión",
+    "edgeConnect": "Nueva conexión",
+    "edgeEdit": "Editar conexión",
+    "edgePercentage": "Porcentaje (%)",
+    "edgeLabel": "Etiqueta",
+    "edgeConfirm": "Confirmar",
+    "percentageWarning": "Los porcentajes salientes no suman 100% para: {nodes}"
   },
   "teacherHome": {
     "greetingMorning": "Buenos días, {name}",
@@ -716,7 +722,10 @@
     "sessionStatusPending": "Pendiente",
     "sessionStatusCompleted": "Completada",
     "sessionStatusSuspended": "Suspendida",
-    "sessionStatusHoliday": "Festivo"
+    "sessionStatusHoliday": "Festivo",
+    "sessionStatusUnknown": "Desconocida",
+    "sessionStatusExcused": "Excusada",
+    "sessionStatusCancelled": "Cancelada"
   },
   "sessionsDashboard": {
     "pageTitle": "Dashboard de sesiones",
@@ -833,7 +842,22 @@
     "colTime": "Hora",
     "colStatus": "Estado",
     "colProject": "Proyecto",
-    "noSessions": "No hay sesiones registradas"
+    "noSessions": "No hay sesiones registradas",
+    "addStudent": "Añadir alumno",
+    "firstNameLabel": "Nombre",
+    "lastNameLabel": "Apellidos",
+    "alreadyEnrolledSection": "Ya matriculado en este grupo",
+    "existingStudentsSection": "Alumnos existentes",
+    "addToGroup": "Añadir al grupo",
+    "addingToGroup": "Añadiendo...",
+    "noSearchResults": "Sin resultados para esta búsqueda",
+    "noneOfThese": "No es ninguno de estos",
+    "createNewStudent": "Crear nuevo alumno",
+    "creatingStudent": "Creando...",
+    "inactiveBadge": "Inactivo",
+    "unenrollConfirm": "¿Dar de baja a {name}? Si no pertenece a otros grupos, quedará marcado como inactivo.",
+    "confirmUnenroll": "Confirmar baja",
+    "cancelUnenroll": "Cancelar"
   },
   "attitudes": {
     "pageTitle": "Acciones actitudinales",

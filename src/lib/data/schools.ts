@@ -40,7 +40,7 @@ export interface Worker {
 
 type RawWorker = { id: string; first_name: string; last_name: string }
 type RawAssignment = { end_date: string | null; workers: RawWorker | null }
-type RawEnrollment = { student_id: string }
+type RawEnrollment = { student_id: string; is_active: boolean }
 type RawScheduleRow = { weekday: number; start_time: string; end_time: string }
 type RawSchoolYear = { name: string } | null
 type RawGroup = {
@@ -69,7 +69,7 @@ function transformSchools(raw: RawSchool[]): School[] {
         .filter((a) => a.end_date === null && a.workers)
         .map((a) => a.workers as RawWorker)
 
-      const enrollments = g.group_enrollments ?? []
+      const enrollments = (g.group_enrollments ?? []).filter((e) => e.is_active)
       enrollments.forEach((e) => uniqueStudents.add(e.student_id))
 
       const schedule: GroupScheduleItem[] = [...(g.group_schedule ?? [])].sort(
@@ -99,25 +99,18 @@ function transformSchools(raw: RawSchool[]): School[] {
   })
 }
 
-export const getSchoolsWithGroups = unstable_cache(
-  async (): Promise<School[]> => {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+export async function getSchoolsWithGroups(): Promise<School[]> {
+  const supabase = await createServerClient()
+  const { data, error } = await supabase
+    .from('schools')
+    .select(
+      'id, name, groups(id, name, is_active, school_year_id, school_years(name), group_enrollments(student_id, is_active), group_schedule(weekday, start_time, end_time), group_assignments(end_date, workers(id, first_name, last_name)))'
     )
-    const { data, error } = await supabase
-      .from('schools')
-      .select(
-        'id, name, groups(id, name, is_active, school_year_id, school_years(name), group_enrollments(student_id), group_schedule(weekday, start_time, end_time), group_assignments(end_date, workers(id, first_name, last_name)))'
-      )
-      .eq('is_active', true)
-      .order('name')
-    if (error) throw new Error(error.message)
-    return transformSchools((data ?? []) as unknown as RawSchool[])
-  },
-  ['schools'],
-  { tags: ['schools'], revalidate: false }
-)
+    .eq('is_active', true)
+    .order('name')
+  if (error) throw new Error(error.message)
+  return transformSchools((data ?? []) as unknown as RawSchool[])
+}
 
 export const getActiveWorkers = unstable_cache(
   async (): Promise<Worker[]> => {

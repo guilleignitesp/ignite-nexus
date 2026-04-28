@@ -484,7 +484,13 @@
     "noAvailableProjects": "No hi ha projectes per afegir",
     "setAsInitial": "Marcar com a inicial",
     "removeFromMap": "Eliminar del mapa",
-    "removeConnection": "Eliminar connexió"
+    "removeConnection": "Eliminar connexió",
+    "edgeConnect": "Nova connexió",
+    "edgeEdit": "Editar connexió",
+    "edgePercentage": "Percentatge (%)",
+    "edgeLabel": "Etiqueta",
+    "edgeConfirm": "Confirmar",
+    "percentageWarning": "Els percentatges sortints no sumen 100% per a: {nodes}"
   },
   "teacherHome": {
     "greetingMorning": "Bon dia, {name}",
@@ -716,7 +722,10 @@
     "sessionStatusPending": "Pendent",
     "sessionStatusCompleted": "Completada",
     "sessionStatusSuspended": "Suspesa",
-    "sessionStatusHoliday": "Festiu"
+    "sessionStatusHoliday": "Festiu",
+    "sessionStatusUnknown": "Desconeguda",
+    "sessionStatusExcused": "Excusada",
+    "sessionStatusCancelled": "Cancel·lada"
   },
   "sessionsDashboard": {
     "pageTitle": "Dashboard de sessions",
@@ -833,7 +842,22 @@
     "colTime": "Hora",
     "colStatus": "Estat",
     "colProject": "Projecte",
-    "noSessions": "Sense sessions registrades"
+    "noSessions": "Sense sessions registrades",
+    "addStudent": "Afegir alumne",
+    "firstNameLabel": "Nom",
+    "lastNameLabel": "Cognoms",
+    "alreadyEnrolledSection": "Ja matriculat en aquest grup",
+    "existingStudentsSection": "Alumnes existents",
+    "addToGroup": "Afegir al grup",
+    "addingToGroup": "Afegint...",
+    "noSearchResults": "Sense resultats per a aquesta cerca",
+    "noneOfThese": "No és cap d'aquests",
+    "createNewStudent": "Crear nou alumne",
+    "creatingStudent": "Creant...",
+    "inactiveBadge": "Inactiu",
+    "unenrollConfirm": "Donar de baixa a {name}? Si no pertany a altres grups, quedarà marcat com a inactiu.",
+    "confirmUnenroll": "Confirmar baixa",
+    "cancelUnenroll": "Cancel·lar"
   },
   "attitudes": {
     "pageTitle": "Accions actitudinals",

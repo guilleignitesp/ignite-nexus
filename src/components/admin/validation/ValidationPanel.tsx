@@ -30,6 +30,9 @@ const STATUS_VARIANT: Record<
   completed: 'default',
   suspended: 'destructive',
   holiday: 'outline',
+  unknown: 'secondary',
+  excused: 'outline',
+  cancelled: 'destructive',
 }
 
 interface ValidationPanelProps {

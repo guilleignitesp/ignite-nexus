@@ -484,7 +484,13 @@
     "noAvailableProjects": "No projects to add",
     "setAsInitial": "Set as initial",
     "removeFromMap": "Remove from map",
-    "removeConnection": "Remove connection"
+    "removeConnection": "Remove connection",
+    "edgeConnect": "New connection",
+    "edgeEdit": "Edit connection",
+    "edgePercentage": "Percentage (%)",
+    "edgeLabel": "Label",
+    "edgeConfirm": "Confirm",
+    "percentageWarning": "Outgoing percentages don't add up to 100% for: {nodes}"
   },
   "teacherHome": {
     "greetingMorning": "Good morning, {name}",
@@ -716,7 +722,10 @@
     "sessionStatusPending": "Pending",
     "sessionStatusCompleted": "Completed",
     "sessionStatusSuspended": "Suspended",
-    "sessionStatusHoliday": "Holiday"
+    "sessionStatusHoliday": "Holiday",
+    "sessionStatusUnknown": "Unknown",
+    "sessionStatusExcused": "Excused",
+    "sessionStatusCancelled": "Cancelled"
   },
   "sessionsDashboard": {
     "pageTitle": "Sessions dashboard",
@@ -833,7 +842,22 @@
     "colTime": "Time",
     "colStatus": "Status",
     "colProject": "Project",
-    "noSessions": "No sessions recorded"
+    "noSessions": "No sessions recorded",
+    "addStudent": "Add student",
+    "firstNameLabel": "First name",
+    "lastNameLabel": "Last name",
+    "alreadyEnrolledSection": "Already enrolled in this group",
+    "existingStudentsSection": "Existing students",
+    "addToGroup": "Add to group",
+    "addingToGroup": "Adding...",
+    "noSearchResults": "No results for this search",
+    "noneOfThese": "None of these",
+    "createNewStudent": "Create new student",
+    "creatingStudent": "Creating...",
+    "inactiveBadge": "Inactive",
+    "unenrollConfirm": "Remove {name} from group? If they have no other groups, they will be marked as inactive.",
+    "confirmUnenroll": "Confirm",
+    "cancelUnenroll": "Cancel"
   },
   "attitudes": {
     "pageTitle": "Attitude actions",

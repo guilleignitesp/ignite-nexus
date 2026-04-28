@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, memo, useTransition } from 'react'
+import { useState, useCallback, useEffect, memo, useTransition, useMemo } from 'react'
 import '@xyflow/react/dist/style.css'
 import {
   ReactFlow,
@@ -12,16 +12,20 @@ import {
   addEdge,
   useNodesState,
   useEdgesState,
+  EdgeLabelRenderer,
+  getBezierPath,
+  BaseEdge,
   type Node,
   type Edge,
   type Connection,
   type NodeProps,
+  type EdgeProps,
   type NodeChange,
   MarkerType,
 } from '@xyflow/react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Wand2 } from 'lucide-react'
+import { ArrowLeft, Wand2, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { computeLayout } from '@/lib/utils/map-layout'
 import { Button } from '@/components/ui/button'
@@ -42,7 +46,6 @@ type ProjectNodeData = {
 
 type ProjectNode = Node<ProjectNodeData, 'projectNode'>
 
-// Must be defined outside MapEditor to prevent recreation on every render
 const ProjectNodeComponent = memo(({ data, selected }: NodeProps<ProjectNode>) => (
   <div
     className={cn(
@@ -74,6 +77,67 @@ ProjectNodeComponent.displayName = 'ProjectNodeComponent'
 
 const nodeTypes = { projectNode: ProjectNodeComponent }
 
+// ─── Custom edge ──────────────────────────────────────────────
+
+type EdgeData = { percentage: number | null; label: string | null }
+
+const ProjectEdgeComponent = memo(
+  ({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourcePosition,
+    targetPosition,
+    data,
+    markerEnd,
+    selected,
+  }: EdgeProps) => {
+    const d = data as EdgeData | undefined
+    const [edgePath, labelX, labelY] = getBezierPath({
+      sourceX,
+      sourceY,
+      sourcePosition,
+      targetX,
+      targetY,
+      targetPosition,
+    })
+    const hasLabel = d?.label || d?.percentage != null
+
+    return (
+      <>
+        <BaseEdge
+          path={edgePath}
+          markerEnd={markerEnd}
+          style={selected ? { stroke: 'hsl(var(--primary))' } : undefined}
+        />
+        {hasLabel && (
+          <EdgeLabelRenderer>
+            <div
+              style={{
+                position: 'absolute',
+                transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+                pointerEvents: 'none',
+              }}
+              className="nodrag nopan flex items-center gap-1 rounded border bg-background px-1.5 py-0.5 text-[10px] shadow-sm"
+            >
+              {d?.percentage != null && (
+                <span className="font-semibold">{d.percentage}%</span>
+              )}
+              {d?.label && (
+                <span className="text-muted-foreground">{d.label}</span>
+              )}
+            </div>
+          </EdgeLabelRenderer>
+        )}
+      </>
+    )
+  }
+)
+ProjectEdgeComponent.displayName = 'ProjectEdgeComponent'
+
+const edgeTypes = { projectEdge: ProjectEdgeComponent }
+
 // ─── Conversion helpers ───────────────────────────────────────
 
 function buildInitialNodes(map: MapDetail): ProjectNode[] {
@@ -103,7 +167,9 @@ function buildInitialEdges(map: MapDetail): Edge[] {
     id: `${e.fromProjectId}-${e.toProjectId}`,
     source: e.fromProjectId,
     target: e.toProjectId,
+    type: 'projectEdge',
     markerEnd: { type: MarkerType.ArrowClosed },
+    data: { percentage: e.percentage, label: e.label } satisfies EdgeData,
   }))
 }
 
@@ -115,6 +181,14 @@ interface MapEditorProps {
   locale: string
 }
 
+type EdgePanelState = {
+  mode: 'connect' | 'edit'
+  connection?: Connection
+  edgeId?: string
+  percentage: string
+  label: string
+}
+
 export function MapEditor({ map, allProjects, locale }: MapEditorProps) {
   const t = useTranslations('projectMaps')
   const router = useRouter()
@@ -124,15 +198,16 @@ export function MapEditor({ map, allProjects, locale }: MapEditorProps) {
     map.initial_project_id
   )
   const [search, setSearch] = useState('')
+  const [materialFilter, setMaterialFilter] = useState('')
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([])
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<string[]>([])
+  const [edgePanel, setEdgePanel] = useState<EdgePanelState | null>(null)
 
   const [nodes, setNodes, onNodesChange] = useNodesState<ProjectNode>(
     buildInitialNodes(map)
   )
   const [edges, setEdges, onEdgesChange] = useEdgesState(buildInitialEdges(map))
 
-  // Sync isInitial flag in node data whenever initialProjectId changes
   useEffect(() => {
     setNodes((prev) =>
       prev.map((n) => ({
@@ -144,22 +219,66 @@ export function MapEditor({ map, allProjects, locale }: MapEditorProps) {
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      setEdges((eds) =>
-        addEdge({ ...connection, markerEnd: { type: MarkerType.ArrowClosed } }, eds)
-      )
+      setEdgePanel({ mode: 'connect', connection, percentage: '', label: '' })
     },
-    [setEdges]
+    []
   )
 
-  function handleNodesChange(changes: NodeChange<ProjectNode>[]) {
-    const removedIds = changes
-      .filter((c) => c.type === 'remove')
-      .map((c) => c.id)
-    if (initialProjectId && removedIds.includes(initialProjectId)) {
-      setInitialProjectId(null)
+  function handleEdgePanelConfirm() {
+    if (!edgePanel) return
+    const raw = parseFloat(edgePanel.percentage)
+    const data: EdgeData = {
+      percentage: edgePanel.percentage !== '' && !isNaN(raw) ? raw : null,
+      label: edgePanel.label.trim() || null,
     }
-    onNodesChange(changes)
+    if (edgePanel.mode === 'connect' && edgePanel.connection) {
+      setEdges((eds) =>
+        addEdge(
+          {
+            ...edgePanel.connection!,
+            type: 'projectEdge',
+            markerEnd: { type: MarkerType.ArrowClosed },
+            data,
+          },
+          eds
+        )
+      )
+    } else if (edgePanel.mode === 'edit' && edgePanel.edgeId) {
+      setEdges((eds) =>
+        eds.map((e) => (e.id === edgePanel.edgeId ? { ...e, data } : e))
+      )
+    }
+    setEdgePanel(null)
   }
+
+  const handleEdgeClick = useCallback((_: React.MouseEvent, edge: Edge) => {
+    const d = edge.data as EdgeData | undefined
+    setEdgePanel({
+      mode: 'edit',
+      edgeId: edge.id,
+      percentage: d?.percentage != null ? String(d.percentage) : '',
+      label: d?.label ?? '',
+    })
+  }, [])
+
+  const handleNodesChange = useCallback(
+    (changes: NodeChange<ProjectNode>[]) => {
+      const removedIds = changes.filter((c) => c.type === 'remove').map((c) => c.id)
+      if (initialProjectId && removedIds.includes(initialProjectId)) {
+        setInitialProjectId(null)
+      }
+      onNodesChange(changes)
+    },
+    [initialProjectId, onNodesChange]
+  )
+
+  const onSelectionChange = useCallback(
+    ({ nodes: selNodes, edges: selEdges }: { nodes: Node[]; edges: Edge[] }) => {
+      setSelectedNodeIds(selNodes.map((n) => n.id))
+      setSelectedEdgeIds(selEdges.map((e) => e.id))
+    },
+    []
+  )
 
   function handleAutoLayout() {
     const edgePairs = edges.map((e) => ({ source: e.source, target: e.target }))
@@ -219,22 +338,52 @@ export function MapEditor({ map, allProjects, locale }: MapEditorProps) {
     startTransition(async () => {
       await saveProjectMap(map.id, {
         nodes: nodes.map((n) => ({ projectId: n.id })),
-        edges: edges.map((e) => ({
-          fromProjectId: e.source,
-          toProjectId: e.target,
-        })),
+        edges: edges.map((e) => {
+          const d = e.data as EdgeData | undefined
+          return {
+            fromProjectId: e.source,
+            toProjectId: e.target,
+            percentage: d?.percentage ?? null,
+            label: d?.label ?? null,
+          }
+        }),
         initialProjectId,
       })
       router.refresh()
     })
   }
 
+  const warningNodes = useMemo(() => {
+    const bySource = new Map<string, number[]>()
+    for (const e of edges) {
+      const pct = (e.data as EdgeData | undefined)?.percentage
+      if (pct != null) {
+        const arr = bySource.get(e.source) ?? []
+        arr.push(pct)
+        bySource.set(e.source, arr)
+      }
+    }
+    const problematic: string[] = []
+    for (const [nodeId, pcts] of bySource) {
+      if (Math.abs(pcts.reduce((a, b) => a + b, 0) - 100) > 0.01) {
+        const node = nodes.find((n) => n.id === nodeId)
+        if (node) problematic.push(node.data.label)
+      }
+    }
+    return problematic
+  }, [edges, nodes])
+
+  const materialTypes = [
+    ...new Set(allProjects.filter((p) => p.material_type).map((p) => p.material_type!)),
+  ]
+
   const inMapIds = new Set(nodes.map((n) => n.id))
   const availableProjects = allProjects.filter(
     (p) =>
       p.is_active &&
       !inMapIds.has(p.id) &&
-      (search === '' || p.name.toLowerCase().includes(search.toLowerCase()))
+      (search === '' || p.name.toLowerCase().includes(search.toLowerCase())) &&
+      (materialFilter === '' || p.material_type === materialFilter)
   )
 
   const hasSelection = selectedNodeIds.length > 0 || selectedEdgeIds.length > 0
@@ -270,7 +419,7 @@ export function MapEditor({ map, allProjects, locale }: MapEditorProps) {
 
       {/* Content */}
       <div className="flex min-h-0 flex-1">
-        {/* Sidebar — available projects */}
+        {/* Sidebar */}
         <div className="flex w-64 shrink-0 flex-col gap-2 overflow-hidden border-r bg-muted/30 p-3">
           <p className="text-xs font-medium text-muted-foreground">
             {t('availableProjects')}
@@ -281,6 +430,16 @@ export function MapEditor({ map, allProjects, locale }: MapEditorProps) {
             onChange={(e) => setSearch(e.target.value)}
             className="h-8 text-xs"
           />
+          <select
+            value={materialFilter}
+            onChange={(e) => setMaterialFilter(e.target.value)}
+            className="h-8 w-full rounded-md border border-input bg-transparent px-2 text-xs"
+          >
+            <option value="">Todos los materiales</option>
+            {materialTypes.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
           <div className="flex-1 overflow-y-auto space-y-0.5">
             {availableProjects.length === 0 ? (
               <p className="text-xs text-muted-foreground">{t('noAvailableProjects')}</p>
@@ -309,17 +468,86 @@ export function MapEditor({ map, allProjects, locale }: MapEditorProps) {
             onNodesChange={handleNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            onEdgeClick={handleEdgeClick}
             nodeTypes={nodeTypes}
-            onSelectionChange={({ nodes: selNodes, edges: selEdges }) => {
-              setSelectedNodeIds(selNodes.map((n) => n.id))
-              setSelectedEdgeIds(selEdges.map((e) => e.id))
-            }}
+            edgeTypes={edgeTypes}
+            onSelectionChange={onSelectionChange}
             fitView
             deleteKeyCode="Delete"
           >
             <Background />
             <Controls />
-            {hasSelection && (
+
+            {warningNodes.length > 0 && (
+              <Panel position="top-center">
+                <div className="flex items-center gap-2 rounded-lg border border-yellow-300 bg-yellow-50 px-3 py-2 text-xs text-yellow-800 shadow-sm">
+                  <AlertTriangle className="size-3.5 shrink-0" />
+                  {t('percentageWarning', { nodes: warningNodes.join(', ') })}
+                </div>
+              </Panel>
+            )}
+
+            {edgePanel && (
+              <Panel position="top-right">
+                <div className="w-60 rounded-lg border bg-background p-3 shadow-md space-y-3">
+                  <p className="text-sm font-medium">
+                    {edgePanel.mode === 'connect' ? t('edgeConnect') : t('edgeEdit')}
+                  </p>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-xs text-muted-foreground">
+                        {t('edgePercentage')}
+                      </label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={edgePanel.percentage}
+                        onChange={(e) =>
+                          setEdgePanel((p) =>
+                            p ? { ...p, percentage: e.target.value } : null
+                          )
+                        }
+                        placeholder="0–100"
+                        className="mt-1 h-8 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">
+                        {t('edgeLabel')}
+                      </label>
+                      <Input
+                        value={edgePanel.label}
+                        onChange={(e) =>
+                          setEdgePanel((p) =>
+                            p ? { ...p, label: e.target.value } : null
+                          )
+                        }
+                        className="mt-1 h-8 text-xs"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={handleEdgePanelConfirm}
+                      className="flex-1"
+                    >
+                      {t('edgeConfirm')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEdgePanel(null)}
+                    >
+                      {t('cancel')}
+                    </Button>
+                  </div>
+                </div>
+              </Panel>
+            )}
+
+            {hasSelection && !edgePanel && (
               <Panel position="bottom-center">
                 <div className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm shadow-md">
                   {selectedNodeIds.length === 1 && (
