@@ -143,22 +143,16 @@ export function ProjectsList({ projects, branches, locale }: ProjectsListProps) 
                   <td className="px-4 py-3 text-muted-foreground">
                     {project.skills.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
-                        {Array.from(
-                          project.skills.reduce((acc, s) => {
-                            if (!acc.has(s.branch_color)) acc.set(s.branch_color, 0)
-                            acc.set(s.branch_color, acc.get(s.branch_color)! + 1)
-                            return acc
-                          }, new Map<string, number>())
-                        ).map(([color, count]) => (
+                        {project.skills.map((s) => (
                           <span
-                            key={color}
+                            key={s.skill_id}
                             className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs bg-muted"
                           >
                             <span
                               className="size-1.5 rounded-full"
-                              style={{ backgroundColor: color }}
+                              style={{ backgroundColor: s.branch_color }}
                             />
-                            {count}
+                            Rk{s.rank}
                           </span>
                         ))}
                       </div>

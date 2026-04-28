@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Plus, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createProject, updateProject } from '@/lib/actions/projects'
+import { calcXP } from '@/lib/data/projects'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -28,8 +29,7 @@ interface ResourceEntry {
 }
 
 interface SkillSelection {
-  base_xp: number
-  difficulty_grade: number
+  rank: number
 }
 
 interface ProjectDialogProps {
@@ -86,7 +86,7 @@ export function ProjectDialog({
       )
       const map = new Map<string, SkillSelection>()
       project.skills.forEach((s) => {
-        map.set(s.skill_id, { base_xp: s.base_xp, difficulty_grade: s.difficulty_grade })
+        map.set(s.skill_id, { rank: s.rank })
       })
       setSkillMap(map)
     } else {
@@ -133,26 +133,17 @@ export function ProjectDialog({
       if (next.has(skill.id)) {
         next.delete(skill.id)
       } else {
-        next.set(skill.id, { base_xp: skill.base_xp, difficulty_grade: 3 })
+        next.set(skill.id, { rank: 1 })
       }
       return next
     })
   }
 
-  function updateSkillXP(skillId: string, xp: number) {
+  function updateSkillRank(skillId: string, rank: number) {
     setSkillMap((prev) => {
       const next = new Map(prev)
       const existing = next.get(skillId)
-      if (existing) next.set(skillId, { ...existing, base_xp: Math.max(1, xp || 1) })
-      return next
-    })
-  }
-
-  function updateSkillDifficulty(skillId: string, grade: number) {
-    setSkillMap((prev) => {
-      const next = new Map(prev)
-      const existing = next.get(skillId)
-      if (existing) next.set(skillId, { ...existing, difficulty_grade: grade })
+      if (existing) next.set(skillId, { rank: Math.max(1, Math.round(rank || 1)) })
       return next
     })
   }
@@ -162,8 +153,7 @@ export function ProjectDialog({
     setError(null)
     const skillsInput = Array.from(skillMap.entries()).map(([skill_id, vals]) => ({
       skill_id,
-      base_xp: vals.base_xp,
-      difficulty_grade: vals.difficulty_grade,
+      rank: vals.rank,
     }))
     const input = {
       name,
@@ -351,39 +341,24 @@ export function ProjectDialog({
                               {localeName(skill, locale)}
                             </label>
                             {selected && (
-                              <div className="flex items-center gap-3">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-xs text-muted-foreground">
-                                    {t('baseXpLabel')}
-                                  </span>
-                                  <Input
-                                    type="number"
-                                    min={1}
-                                    value={selected.base_xp}
-                                    onChange={(e) =>
-                                      updateSkillXP(skill.id, Number(e.target.value))
-                                    }
-                                    disabled={isPending}
-                                    className="h-7 w-20 text-xs"
-                                  />
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-xs text-muted-foreground">
-                                    {t('difficultyLabel')}
-                                  </span>
-                                  <select
-                                    value={selected.difficulty_grade}
-                                    onChange={(e) =>
-                                      updateSkillDifficulty(skill.id, Number(e.target.value))
-                                    }
-                                    disabled={isPending}
-                                    className="h-7 rounded-md border border-input bg-transparent px-2 text-xs"
-                                  >
-                                    {[1, 2, 3, 4, 5].map((n) => (
-                                      <option key={n} value={n}>{n}</option>
-                                    ))}
-                                  </select>
-                                </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground">
+                                  {t('rankLabel')}
+                                </span>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  step={1}
+                                  value={selected.rank}
+                                  onChange={(e) =>
+                                    updateSkillRank(skill.id, Number(e.target.value))
+                                  }
+                                  disabled={isPending}
+                                  className="h-7 w-16 text-xs"
+                                />
+                                <span className="text-xs text-muted-foreground">
+                                  = {calcXP(selected.rank)} XP
+                                </span>
                               </div>
                             )}
                           </div>

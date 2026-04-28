@@ -123,7 +123,6 @@ export function SkillsView({ branches, locale }: SkillsViewProps) {
                       <tr className="border-b text-left text-xs text-muted-foreground">
                         <th className="pb-2 pr-4 font-medium">{t('colName')}</th>
                         <th className="pb-2 pr-4 font-medium">{t('colDescription')}</th>
-                        <th className="pb-2 pr-4 font-medium">{t('colBaseXP')}</th>
                         <th className="pb-2 pr-4 font-medium">{t('colStatus')}</th>
                         <th className="pb-2 font-medium" />
                       </tr>
@@ -143,7 +142,6 @@ export function SkillsView({ branches, locale }: SkillsViewProps) {
                           <td className="max-w-xs truncate py-2 pr-4 text-muted-foreground">
                             {skill.description ?? '—'}
                           </td>
-                          <td className="py-2 pr-4 tabular-nums">{skill.base_xp}</td>
                           <td className="py-2 pr-4">
                             <Badge variant={skill.is_active ? 'default' : 'secondary'}>
                               {skill.is_active ? t('statusActive') : t('statusInactive')}

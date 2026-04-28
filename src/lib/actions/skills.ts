@@ -42,7 +42,6 @@ export async function createSkill(input: {
   name_en: string
   name_ca: string
   description: string
-  base_xp: number
 }): Promise<void> {
   await assertSkillsAccess()
   const supabase = await createClient()
@@ -52,7 +51,6 @@ export async function createSkill(input: {
     name_en: input.name_en.trim(),
     name_ca: input.name_ca.trim(),
     description: input.description.trim() || null,
-    base_xp: Math.max(1, Math.round(input.base_xp)),
   })
   if (error) throw new Error(error.message)
   updateTag('skills')
@@ -65,7 +63,6 @@ export async function updateSkill(
     name_en: string
     name_ca: string
     description: string
-    base_xp: number
   }
 ): Promise<void> {
   await assertSkillsAccess()
@@ -77,7 +74,6 @@ export async function updateSkill(
       name_en: input.name_en.trim(),
       name_ca: input.name_ca.trim(),
       description: input.description.trim() || null,
-      base_xp: Math.max(1, Math.round(input.base_xp)),
     })
     .eq('id', id)
   if (error) throw new Error(error.message)

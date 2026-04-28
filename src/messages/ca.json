@@ -375,9 +375,8 @@
     "typePresentation": "Presentació",
     "removeResource": "Eliminar",
     "skillsSection": "Habilitats",
-    "skillsDescription": "Selecciona les habilitats que avalua aquest projecte i configura el XP base i la dificultat.",
-    "baseXpLabel": "XP",
-    "difficultyLabel": "Dif.",
+    "skillsDescription": "Selecciona les habilitats que avalua aquest projecte i defineix el rang.",
+    "rankLabel": "Rang",
     "save": "Desar",
     "cancel": "Cancel·lar",
     "saveError": "S'ha produït un error en desar"
@@ -407,7 +406,6 @@
     "editSkillTitle": "Editar habilitat",
     "descriptionLabel": "Descripció",
     "descriptionPlaceholder": "Descripció opcional",
-    "baseXpLabel": "XP base",
     "save": "Desar",
     "cancel": "Cancel·lar",
     "saveError": "S'ha produït un error en desar"

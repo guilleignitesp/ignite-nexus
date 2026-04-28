@@ -375,9 +375,8 @@
     "typePresentation": "Presentation",
     "removeResource": "Remove",
     "skillsSection": "Skills",
-    "skillsDescription": "Select the skills this project evaluates and configure the base XP and difficulty.",
-    "baseXpLabel": "XP",
-    "difficultyLabel": "Dif.",
+    "skillsDescription": "Select the skills this project evaluates and set the rank.",
+    "rankLabel": "Rank",
     "save": "Save",
     "cancel": "Cancel",
     "saveError": "An error occurred while saving"
@@ -407,7 +406,6 @@
     "editSkillTitle": "Edit skill",
     "descriptionLabel": "Description",
     "descriptionPlaceholder": "Optional description",
-    "baseXpLabel": "Base XP",
     "save": "Save",
     "cancel": "Cancel",
     "saveError": "An error occurred while saving"

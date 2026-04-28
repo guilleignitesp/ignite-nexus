@@ -8,7 +8,6 @@ export interface SkillItem {
   name_en: string
   name_ca: string
   description: string | null
-  base_xp: number
   is_active: boolean
 }
 
@@ -29,7 +28,6 @@ type RawSkill = {
   name_en: string
   name_ca: string
   description: string | null
-  base_xp: number
   is_active: boolean
 }
 
@@ -52,7 +50,7 @@ export const getBranchesWithSkills = unstable_cache(
     const { data, error } = await supabase
       .from('branches')
       .select(
-        'id, code, name_es, name_en, name_ca, color, skills(id, branch_id, name_es, name_en, name_ca, description, base_xp, is_active)'
+        'id, code, name_es, name_en, name_ca, color, skills(id, branch_id, name_es, name_en, name_ca, description, is_active)'
       )
       .order('code')
     if (error) throw new Error(error.message)

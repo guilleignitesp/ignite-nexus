@@ -18,8 +18,11 @@ export interface ProjectSkillEntry {
   branch_name_en: string
   branch_name_ca: string
   branch_color: string
-  base_xp: number
-  difficulty_grade: number
+  rank: number
+}
+
+export function calcXP(rank: number): number {
+  return Math.round(50 * Math.pow(rank, 1.4))
 }
 
 export interface ProjectListItem {
@@ -44,8 +47,7 @@ type RawResource = {
 type RawProjectSkill = {
   id: string
   skill_id: string
-  base_xp: number
-  difficulty_grade: number | null
+  rank: number | null
   skills: {
     name_es: string
     name_en: string
@@ -94,8 +96,7 @@ function transformProjects(raw: RawProject[]): ProjectListItem[] {
       branch_name_en: ps.skills?.branches?.name_en ?? '',
       branch_name_ca: ps.skills?.branches?.name_ca ?? '',
       branch_color: ps.skills?.branches?.color ?? '#000000',
-      base_xp: ps.base_xp,
-      difficulty_grade: ps.difficulty_grade ?? 3,
+      rank: ps.rank ?? 1,
     })),
     map_names: (p.project_map_nodes ?? [])
       .map((n) => n.project_maps?.name)
@@ -114,7 +115,7 @@ export const getProjectsList = unstable_cache(
       .select(
         `id, name, material_type, recommended_hours, description, is_active,
         project_resources(id, title, url, type),
-        project_skills(id, skill_id, base_xp, difficulty_grade, skills(name_es, name_en, name_ca, branches(name_es, name_en, name_ca, color))),
+        project_skills(id, skill_id, rank, skills(name_es, name_en, name_ca, branches(name_es, name_en, name_ca, color))),
         project_map_nodes(project_maps(id, name))`
       )
       .order('name')

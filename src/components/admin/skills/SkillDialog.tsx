@@ -32,7 +32,6 @@ export function SkillDialog({ mode, branchId, skill, open, onOpenChange }: Skill
   const [nameEn, setNameEn] = useState('')
   const [nameCa, setNameCa] = useState('')
   const [description, setDescription] = useState('')
-  const [baseXp, setBaseXp] = useState(100)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -43,13 +42,11 @@ export function SkillDialog({ mode, branchId, skill, open, onOpenChange }: Skill
         setNameEn(skill.name_en)
         setNameCa(skill.name_ca)
         setDescription(skill.description ?? '')
-        setBaseXp(skill.base_xp)
       } else {
         setNameEs('')
         setNameEn('')
         setNameCa('')
         setDescription('')
-        setBaseXp(100)
       }
       setError(null)
     }
@@ -65,9 +62,9 @@ export function SkillDialog({ mode, branchId, skill, open, onOpenChange }: Skill
     startTransition(async () => {
       try {
         if (mode === 'create') {
-          await createSkill({ branch_id: branchId, name_es: nameEs, name_en: nameEn, name_ca: nameCa, description, base_xp: baseXp })
+          await createSkill({ branch_id: branchId, name_es: nameEs, name_en: nameEn, name_ca: nameCa, description })
         } else if (skill) {
-          await updateSkill(skill.id, { name_es: nameEs, name_en: nameEn, name_ca: nameCa, description, base_xp: baseXp })
+          await updateSkill(skill.id, { name_es: nameEs, name_en: nameEn, name_ca: nameCa, description })
         }
         onOpenChange(false)
         router.refresh()
@@ -126,19 +123,7 @@ export function SkillDialog({ mode, branchId, skill, open, onOpenChange }: Skill
               placeholder={t('descriptionPlaceholder')}
             />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="skill-base-xp">{t('baseXpLabel')}</Label>
-            <Input
-              id="skill-base-xp"
-              type="number"
-              min={1}
-              value={baseXp}
-              onChange={(e) => setBaseXp(Number(e.target.value))}
-              disabled={isPending}
-              required
-            />
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error &&<p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
             <DialogClose
               render={<Button type="button" variant="outline" disabled={isPending} />}

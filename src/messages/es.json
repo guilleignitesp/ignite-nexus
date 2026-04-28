@@ -375,9 +375,8 @@
     "typePresentation": "Presentación",
     "removeResource": "Eliminar",
     "skillsSection": "Habilidades",
-    "skillsDescription": "Selecciona las habilidades que evalúa este proyecto y configura el XP base y la dificultad.",
-    "baseXpLabel": "XP",
-    "difficultyLabel": "Dif.",
+    "skillsDescription": "Selecciona las habilidades que evalúa este proyecto y define el rango.",
+    "rankLabel": "Rango",
     "save": "Guardar",
     "cancel": "Cancelar",
     "saveError": "Ha ocurrido un error al guardar"
@@ -407,7 +406,6 @@
     "editSkillTitle": "Editar habilidad",
     "descriptionLabel": "Descripción",
     "descriptionPlaceholder": "Descripción opcional",
-    "baseXpLabel": "XP base",
     "save": "Guardar",
     "cancel": "Cancelar",
     "saveError": "Ha ocurrido un error al guardar"

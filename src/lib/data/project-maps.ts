@@ -99,7 +99,10 @@ export async function getProjectMapDetail(id: string): Promise<MapDetail | null>
     )
     .eq('id', id)
     .single()
-  if (error || !data) return null
+  if (error || !data) {
+    console.error('[getProjectMapDetail] Supabase error:', error)
+    return null
+  }
   const raw = data as unknown as RawMapDetail
   return {
     id: raw.id,

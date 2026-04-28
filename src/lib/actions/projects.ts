@@ -18,7 +18,7 @@ interface ProjectInput {
   material_type: string
   recommended_hours: string
   resources: { title: string; url: string; type: 'presentation' | 'guide' }[]
-  skills: { skill_id: string; base_xp: number; difficulty_grade: number }[]
+  skills: { skill_id: string; rank: number }[]
 }
 
 function parseHours(raw: string): number | null {
@@ -61,8 +61,7 @@ export async function createProject(input: ProjectInput): Promise<void> {
       input.skills.map((s) => ({
         project_id: project.id,
         skill_id: s.skill_id,
-        base_xp: Math.max(1, Math.round(s.base_xp)),
-        difficulty_grade: Math.min(5, Math.max(1, s.difficulty_grade)),
+        rank: Math.max(1, Math.round(s.rank)),
       }))
     )
     if (error) throw new Error(error.message)
@@ -118,8 +117,7 @@ export async function updateProject(id: string, input: ProjectInput): Promise<vo
       input.skills.map((s) => ({
         project_id: id,
         skill_id: s.skill_id,
-        base_xp: Math.max(1, Math.round(s.base_xp)),
-        difficulty_grade: Math.min(5, Math.max(1, s.difficulty_grade)),
+        rank: Math.max(1, Math.round(s.rank)),
       }))
     )
     if (error) throw new Error(error.message)

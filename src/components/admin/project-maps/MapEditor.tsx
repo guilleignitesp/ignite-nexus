@@ -32,8 +32,15 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { saveProjectMap } from '@/lib/actions/project-maps'
+import { calcXP } from '@/lib/data/projects'
 import type { MapDetail } from '@/lib/data/project-maps'
-import type { ProjectListItem } from '@/lib/data/projects'
+import type { ProjectListItem, ProjectSkillEntry } from '@/lib/data/projects'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 
 // ─── Custom node ─────────────────────────────────────────────
 
@@ -202,6 +209,7 @@ export function MapEditor({ map, allProjects, locale }: MapEditorProps) {
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([])
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<string[]>([])
   const [edgePanel, setEdgePanel] = useState<EdgePanelState | null>(null)
+  const [viewProjectId, setViewProjectId] = useState<string | null>(null)
 
   const [nodes, setNodes, onNodesChange] = useNodesState<ProjectNode>(
     buildInitialNodes(map)
@@ -276,6 +284,7 @@ export function MapEditor({ map, allProjects, locale }: MapEditorProps) {
     ({ nodes: selNodes, edges: selEdges }: { nodes: Node[]; edges: Edge[] }) => {
       setSelectedNodeIds(selNodes.map((n) => n.id))
       setSelectedEdgeIds(selEdges.map((e) => e.id))
+      setViewProjectId(null)
     },
     []
   )
@@ -387,6 +396,16 @@ export function MapEditor({ map, allProjects, locale }: MapEditorProps) {
   )
 
   const hasSelection = selectedNodeIds.length > 0 || selectedEdgeIds.length > 0
+
+  const viewProject = allProjects.find((p) => p.id === viewProjectId) ?? null
+
+  const skillsByBranch = viewProject
+    ? viewProject.skills.reduce<Record<string, ProjectSkillEntry[]>>((acc, s) => {
+        const branch = s.branch_name_es || 'Otras'
+        ;(acc[branch] ??= []).push(s)
+        return acc
+      }, {})
+    : {}
 
   return (
     <div className="-mx-6 -mt-6 flex h-[calc(100dvh)] flex-col overflow-hidden">
@@ -551,9 +570,18 @@ export function MapEditor({ map, allProjects, locale }: MapEditorProps) {
               <Panel position="bottom-center">
                 <div className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm shadow-md">
                   {selectedNodeIds.length === 1 && (
-                    <Button size="sm" variant="outline" onClick={setAsInitial}>
-                      {t('setAsInitial')}
-                    </Button>
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setViewProjectId(selectedNodeIds[0])}
+                      >
+                        Ver proyecto
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={setAsInitial}>
+                        {t('setAsInitial')}
+                      </Button>
+                    </>
                   )}
                   {selectedNodeIds.length > 0 && (
                     <Button
@@ -579,6 +607,97 @@ export function MapEditor({ map, allProjects, locale }: MapEditorProps) {
           </ReactFlow>
         </div>
       </div>
+
+      <Sheet open={!!viewProject} onOpenChange={(open) => { if (!open) setViewProjectId(null) }}>
+        <SheetContent className="w-96 overflow-y-auto">
+          {viewProject && (
+            <>
+              <SheetHeader>
+                <SheetTitle>{viewProject.name}</SheetTitle>
+                {(viewProject.material_type || viewProject.recommended_hours != null) && (
+                  <p className="text-sm text-muted-foreground">
+                    {[
+                      viewProject.material_type,
+                      viewProject.recommended_hours != null
+                        ? `${viewProject.recommended_hours}h`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </p>
+                )}
+              </SheetHeader>
+
+              <div className="mt-4 space-y-5">
+                {viewProject.description && (
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Descripción
+                    </p>
+                    <p className="text-sm">{viewProject.description}</p>
+                  </div>
+                )}
+
+                {viewProject.resources.length > 0 && (
+                  <div>
+                    <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Recursos
+                    </p>
+                    <div className="space-y-1.5">
+                      {viewProject.resources.map((r) => (
+                        <a
+                          key={r.id}
+                          href={r.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm hover:bg-accent"
+                        >
+                          <Badge variant="secondary" className="shrink-0 text-[10px]">
+                            {r.type === 'presentation' ? 'Presentación' : 'Guía'}
+                          </Badge>
+                          <span className="truncate">{r.title}</span>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {viewProject.skills.length > 0 && (
+                  <div>
+                    <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Habilidades
+                    </p>
+                    <div className="space-y-3">
+                      {Object.entries(skillsByBranch).map(([branch, skills]) => (
+                        <div key={branch}>
+                          <p className="mb-1 text-xs font-semibold">{branch}</p>
+                          <div className="space-y-1">
+                            {skills.map((s) => (
+                              <div key={s.id} className="flex items-center gap-2">
+                                <span
+                                  className="size-2 shrink-0 rounded-full"
+                                  style={{ backgroundColor: s.branch_color }}
+                                />
+                                <span className="flex-1 text-sm">{s.name_es}</span>
+                                <Badge variant="outline" className="text-[10px]">
+                                  Rk{s.rank}
+                                </Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {calcXP(s.rank)} XP
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }
