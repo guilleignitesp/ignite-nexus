@@ -20,12 +20,12 @@ export default async function AdminLayout({
           adminModules={profile.adminModules}
           isSuperAdmin={profile.isSuperAdmin}
         />
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-hidden">
           <div className="flex items-center gap-2 border-b px-4 py-3 lg:hidden">
             <SidebarTrigger />
             <span className="text-sm font-medium">IGNITE NEXUS</span>
           </div>
-          <div className="p-6">{children}</div>
+          <div className="h-full overflow-auto p-6">{children}</div>
         </main>
       </div>
     </SidebarProvider>

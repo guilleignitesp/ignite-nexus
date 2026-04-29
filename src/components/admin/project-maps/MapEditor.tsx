@@ -408,7 +408,7 @@ export function MapEditor({ map, allProjects, locale }: MapEditorProps) {
     : {}
 
   return (
-    <div className="-mx-6 -mt-6 flex h-[calc(100dvh)] flex-col overflow-hidden">
+    <div className="-mx-6 -mt-6 flex h-full flex-col overflow-hidden">
       {/* Toolbar */}
       <div className="flex h-14 shrink-0 items-center gap-3 border-b bg-background px-4">
         <Button
@@ -609,7 +609,10 @@ export function MapEditor({ map, allProjects, locale }: MapEditorProps) {
       </div>
 
       <Sheet open={!!viewProject} onOpenChange={(open) => { if (!open) setViewProjectId(null) }}>
-        <SheetContent className="w-96 overflow-y-auto">
+        <SheetContent
+          className="sm:max-w-sm overflow-y-auto"
+          style={{ maxHeight: '100dvh', overflowY: 'auto' }}
+        >
           {viewProject && (
             <>
               <SheetHeader>

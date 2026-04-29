@@ -138,8 +138,12 @@ export interface GroupSession {
   startTime: string
   endTime: string
   status: string
+  projectId: string | null
   projectName: string | null
   isConsolidated: boolean
+  trafficLight: string | null
+  teacherComment: string | null
+  attendances: { studentId: string; attended: boolean }[]
 }
 
 export interface GroupAdminDetail {
@@ -198,7 +202,10 @@ type RawGroupSession = {
   end_time: string
   status: string
   is_consolidated: boolean
-  projects: { name: string } | null
+  traffic_light: string | null
+  teacher_comment: string | null
+  projects: { id: string; name: string } | null
+  session_attendances: { student_id: string; attended: boolean }[]
 }
 
 export async function getGroupAdminDetail(
@@ -240,7 +247,7 @@ export async function getGroupAdminDetail(
   if (planningIds.length > 0) {
     const { data: sessionsData } = await supabase
       .from('sessions')
-      .select('id, session_date, start_time, end_time, status, is_consolidated, projects(name)')
+      .select('id, session_date, start_time, end_time, status, is_consolidated, traffic_light, teacher_comment, projects(id, name), session_attendances(student_id, attended)')
       .in('planning_id', planningIds)
       .order('session_date', { ascending: false })
       .limit(50)
@@ -250,8 +257,15 @@ export async function getGroupAdminDetail(
       startTime: s.start_time,
       endTime: s.end_time,
       status: s.status,
+      projectId: s.projects?.id ?? null,
       projectName: s.projects?.name ?? null,
       isConsolidated: s.is_consolidated ?? false,
+      trafficLight: s.traffic_light,
+      teacherComment: s.teacher_comment,
+      attendances: (s.session_attendances ?? []).map((a) => ({
+        studentId: a.student_id,
+        attended: a.attended,
+      })),
     }))
   }
 

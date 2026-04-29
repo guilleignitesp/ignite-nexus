@@ -42,6 +42,8 @@ export interface TodaySession {
   teacherComment: string | null
   isConsolidated: boolean
   attendances: { studentId: string; attended: boolean }[]
+  projectId: string | null
+  projectName: string | null
 }
 
 export interface SessionHistoryItem {
@@ -156,6 +158,8 @@ type RawTodaySession = {
   teacher_comment: string | null
   is_consolidated: boolean
   session_attendances: { student_id: string; attended: boolean }[]
+  project_id: string | null
+  projects: { name: string } | null
 }
 
 type RawHistorySession = {
@@ -359,8 +363,8 @@ export async function getGroupDetail(
 
   // Oldest non-completed session — teacher works through backlog in chronological order
   async function fetchClosestSession(pid: string): Promise<RawTodaySession | null> {
-    const sel = `id, session_date, status, traffic_light, teacher_comment, is_consolidated,
-      session_attendances(student_id, attended)`
+    const sel = `id, session_date, status, traffic_light, teacher_comment, is_consolidated, project_id,
+      session_attendances(student_id, attended), projects(name)`
     const { data } = await supabase
       .from('sessions')
       .select(sel)
@@ -400,6 +404,8 @@ export async function getGroupDetail(
           studentId: a.student_id,
           attended: a.attended,
         })),
+        projectId: rawClosest.project_id,
+        projectName: rawClosest.projects?.name ?? null,
       }
     : null
 

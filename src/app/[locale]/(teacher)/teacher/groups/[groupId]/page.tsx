@@ -84,8 +84,8 @@ export default async function TeacherGroupPage({
           <TodaySessionSection
             groupId={detail.groupId}
             planningId={detail.planning.planningId}
-            currentProjectId={detail.planning.currentProjectId}
-            currentProjectName={detail.planning.currentProjectName}
+            currentProjectId={detail.closestSession?.projectId ?? detail.planning.currentProjectId}
+            currentProjectName={detail.closestSession?.projectName ?? detail.planning.currentProjectName}
             todaySlot={detail.todaySlot}
             isClassToday={detail.isClassToday}
             students={detail.students}

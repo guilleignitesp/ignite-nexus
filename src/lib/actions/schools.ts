@@ -246,6 +246,51 @@ export async function createAndEnrollStudent(input: {
   return { studentId: student.id }
 }
 
+export async function adminUpdateSession(input: {
+  sessionId: string
+  status: string
+  projectId: string | null
+  trafficLight: string | null
+  teacherComment: string | null
+  attendances: { studentId: string; attended: boolean }[]
+}): Promise<void> {
+  await assertSchoolsAccess()
+  const supabase = await createClient()
+
+  const { error: updateErr } = await supabase
+    .from('sessions')
+    .update({
+      status: input.status,
+      project_id: input.projectId,
+      traffic_light: input.trafficLight,
+      teacher_comment: input.teacherComment,
+    })
+    .eq('id', input.sessionId)
+  if (updateErr) throw new Error(updateErr.message)
+
+  if (input.attendances.length > 0) {
+    const { error: attErr } = await supabase.from('session_attendances').upsert(
+      input.attendances.map((a) => ({
+        session_id: input.sessionId,
+        student_id: a.studentId,
+        attended: a.attended,
+      })),
+      { onConflict: 'session_id,student_id' }
+    )
+    if (attErr) throw new Error(attErr.message)
+  }
+
+  updateTag('schools')
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  await assertSchoolsAccess()
+  const supabase = await createClient()
+  const { error } = await supabase.from('sessions').delete().eq('id', sessionId)
+  if (error) throw new Error(error.message)
+  updateTag('schools')
+}
+
 export async function createGroupPlanning(
   groupId: string,
   projectMapId: string

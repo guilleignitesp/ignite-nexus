@@ -16,6 +16,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import { PermanentAssignmentDialog } from '@/components/admin/sessions-dashboard/PermanentAssignmentDialog'
 import { GenerateSessionsForm } from './GenerateSessionsForm'
 import {
@@ -24,8 +30,11 @@ import {
   unenrollStudentFromGroup,
   createGroupPlanning,
   createAndEnrollStudent,
+  adminUpdateSession,
+  deleteSession,
 } from '@/lib/actions/schools'
-import type { GroupAdminDetail } from '@/lib/data/schools'
+import { getGroupProjects } from '@/lib/actions/sessions-dashboard'
+import type { GroupAdminDetail, GroupSession } from '@/lib/data/schools'
 
 const WEEKDAY_LABEL: Record<number, string> = {
   1: 'Lun', 2: 'Mar', 3: 'Mié', 4: 'Jue', 5: 'Vie',
@@ -78,6 +87,17 @@ export function GroupDetailClient({ group }: Props) {
   const [assignMapOpen, setAssignMapOpen] = useState(false)
   const [selectedMapId, setSelectedMapId] = useState(group.planningProjectMapId ?? '')
   const [assigning, startAssignTransition] = useTransition()
+
+  // Session edit
+  const [editSession, setEditSession] = useState<GroupSession | null>(null)
+  const [editStatus, setEditStatus] = useState('')
+  const [editProjectId, setEditProjectId] = useState<string | null>(null)
+  const [editTrafficLight, setEditTrafficLight] = useState<string | null>(null)
+  const [editComment, setEditComment] = useState('')
+  const [editAttendances, setEditAttendances] = useState<Record<string, boolean>>({})
+  const [editProjects, setEditProjects] = useState<{ id: string; name: string }[]>([])
+  const [editSaving, setEditSaving] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
 
   const [error, setError] = useState<string | null>(null)
 
@@ -168,6 +188,48 @@ export function GroupDetailClient({ group }: Props) {
         setError(err instanceof Error ? err.message : 'Error')
       }
     })
+  }
+
+  function openEdit(session: GroupSession) {
+    setEditSession(session)
+    setEditStatus(session.status)
+    setEditProjectId(session.projectId)
+    setEditTrafficLight(session.trafficLight)
+    setEditComment(session.teacherComment ?? '')
+    const attMap: Record<string, boolean> = {}
+    for (const s of group.students) {
+      const found = session.attendances.find((a) => a.studentId === s.studentId)
+      attMap[s.studentId] = found ? found.attended : false
+    }
+    setEditAttendances(attMap)
+    setDeleteConfirm(false)
+    setEditProjects([])
+    getGroupProjects(group.id).then((ps) => setEditProjects(ps)).catch(() => {})
+  }
+
+  async function handleSaveSession() {
+    if (!editSession) return
+    setEditSaving(true)
+    setError(null)
+    try {
+      await adminUpdateSession({
+        sessionId: editSession.id,
+        status: editStatus,
+        projectId: editProjectId,
+        trafficLight: editTrafficLight,
+        teacherComment: editComment.trim() || null,
+        attendances: group.students.map((s) => ({
+          studentId: s.studentId,
+          attended: editAttendances[s.studentId] ?? false,
+        })),
+      })
+      setEditSession(null)
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error')
+    } finally {
+      setEditSaving(false)
+    }
   }
 
   const alreadyEnrolledResults = searchResults.filter((r) => r.alreadyEnrolled)
@@ -331,7 +393,8 @@ export function GroupDetailClient({ group }: Props) {
                   <th className="pb-2 pr-4 font-medium">{t('colDate')}</th>
                   <th className="pb-2 pr-4 font-medium">{t('colTime')}</th>
                   <th className="pb-2 pr-4 font-medium">{t('colStatus')}</th>
-                  <th className="pb-2 font-medium">{t('colProject')}</th>
+                  <th className="pb-2 pr-4 font-medium">{t('colProject')}</th>
+                  <th className="pb-2 font-medium" />
                 </tr>
               </thead>
               <tbody>
@@ -348,8 +411,13 @@ export function GroupDetailClient({ group }: Props) {
                         {tDash(`status.${session.status}` as Parameters<typeof tDash>[0])}
                       </span>
                     </td>
-                    <td className="py-2 text-muted-foreground">
+                    <td className="py-2 pr-4 text-muted-foreground">
                       {session.projectName ?? '—'}
+                    </td>
+                    <td className="py-2">
+                      <Button size="xs" variant="outline" onClick={() => openEdit(session)}>
+                        Editar
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -489,6 +557,159 @@ export function GroupDetailClient({ group }: Props) {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Edit session sheet */}
+      <Sheet open={!!editSession} onOpenChange={(open) => { if (!open) setEditSession(null) }}>
+        <SheetContent className="sm:max-w-sm overflow-y-auto" style={{ maxHeight: '100dvh', overflowY: 'auto' }}>
+          {editSession && (
+            <>
+              <SheetHeader>
+                <SheetTitle>{editSession.date}</SheetTitle>
+                <p className="text-sm text-muted-foreground">
+                  {editSession.startTime.slice(0, 5)}–{editSession.endTime.slice(0, 5)}
+                </p>
+              </SheetHeader>
+
+              <div className="mt-4 space-y-5">
+                {/* Status */}
+                <div className="space-y-1.5">
+                  <Label>Estado</Label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value)}
+                    className="h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+                  >
+                    {['pending','completed','suspended','holiday','cancelled','unknown','excused'].map((s) => (
+                      <option key={s} value={s}>
+                        {tDash(`status.${s}` as Parameters<typeof tDash>[0])}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Project */}
+                <div className="space-y-1.5">
+                  <Label>Proyecto</Label>
+                  <select
+                    value={editProjectId ?? ''}
+                    onChange={(e) => setEditProjectId(e.target.value || null)}
+                    className="h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+                  >
+                    <option value="">— Sin proyecto —</option>
+                    {editProjects.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Traffic light */}
+                <div className="space-y-1.5">
+                  <Label>Semáforo</Label>
+                  <div className="flex gap-2">
+                    {(['green','yellow','orange','red'] as const).map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setEditTrafficLight(editTrafficLight === c ? null : c)}
+                        className={`size-7 rounded-full border-2 transition-transform ${
+                          c === 'green' ? 'bg-green-500' :
+                          c === 'yellow' ? 'bg-yellow-400' :
+                          c === 'orange' ? 'bg-orange-500' : 'bg-red-500'
+                        } ${editTrafficLight === c ? 'border-foreground scale-110' : 'border-transparent'}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Comment */}
+                <div className="space-y-1.5">
+                  <Label>Comentario del profesor</Label>
+                  <textarea
+                    value={editComment}
+                    onChange={(e) => setEditComment(e.target.value)}
+                    rows={3}
+                    className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    placeholder="Observaciones..."
+                  />
+                </div>
+
+                {/* Attendance */}
+                {group.students.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label>Asistencia</Label>
+                    <div className="space-y-1 rounded-md border p-2">
+                      {group.students.map((s) => (
+                        <label key={s.studentId} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 hover:bg-muted/50">
+                          <input
+                            type="checkbox"
+                            checked={editAttendances[s.studentId] ?? false}
+                            onChange={(e) =>
+                              setEditAttendances((prev) => ({ ...prev, [s.studentId]: e.target.checked }))
+                            }
+                            className="size-4 rounded border-input"
+                          />
+                          <span className="text-sm">{s.firstName} {s.lastName}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <Button className="w-full" disabled={editSaving} onClick={handleSaveSession}>
+                  {editSaving ? 'Guardando...' : 'Guardar'}
+                </Button>
+
+                {!deleteConfirm ? (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="w-full"
+                    disabled={editSaving}
+                    onClick={() => setDeleteConfirm(true)}
+                  >
+                    Eliminar sesión
+                  </Button>
+                ) : (
+                  <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-3">
+                    <p className="text-xs text-destructive">¿Seguro que quieres eliminar esta sesión?</p>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="flex-1"
+                        disabled={editSaving}
+                        onClick={async () => {
+                          if (!editSession) return
+                          setEditSaving(true)
+                          try {
+                            await deleteSession(editSession.id)
+                            setEditSession(null)
+                            router.refresh()
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : 'Error')
+                          } finally {
+                            setEditSaving(false)
+                          }
+                        }}
+                      >
+                        {editSaving ? '...' : 'Confirmar'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setDeleteConfirm(false)}
+                        disabled={editSaving}
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
 
       {/* Assign map dialog */}
       <Dialog open={assignMapOpen} onOpenChange={setAssignMapOpen}>

@@ -2,7 +2,65 @@
 
 import { updateTag } from 'next/cache'
 import { createClient } from '@/lib/supabase-server'
+import { createClient as createAnonClient } from '@supabase/supabase-js'
 import { getUserProfile } from '@/lib/auth'
+
+export interface ProjectFullDetails {
+  id: string
+  name: string
+  description: string | null
+  material_type: string | null
+  recommended_hours: number | null
+  resources: { title: string; url: string; type: 'presentation' | 'guide' }[]
+  skills: { rank: number; name_es: string; branch_name_es: string; branch_color: string }[]
+}
+
+type RawPFD = {
+  id: string
+  name: string
+  description: string | null
+  material_type: string | null
+  recommended_hours: number | null
+  project_resources: { title: string; url: string; type: 'presentation' | 'guide' }[]
+  project_skills: {
+    rank: number | null
+    skills: { name_es: string; branches: { name_es: string; color: string } | null } | null
+  }[]
+}
+
+export async function getProjectFullDetails(
+  projectId: string
+): Promise<ProjectFullDetails | null> {
+  const supabase = createAnonClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+  const { data, error } = await supabase
+    .from('projects')
+    .select(
+      `id, name, description, material_type, recommended_hours,
+      project_resources(title, url, type),
+      project_skills(rank, skills(name_es, branches(name_es, color)))`
+    )
+    .eq('id', projectId)
+    .single()
+  if (error || !data) return null
+  const raw = data as unknown as RawPFD
+  return {
+    id: raw.id,
+    name: raw.name,
+    description: raw.description,
+    material_type: raw.material_type,
+    recommended_hours: raw.recommended_hours,
+    resources: (raw.project_resources ?? []) as ProjectFullDetails['resources'],
+    skills: (raw.project_skills ?? []).map((ps) => ({
+      rank: ps.rank ?? 1,
+      name_es: ps.skills?.name_es ?? '',
+      branch_name_es: ps.skills?.branches?.name_es ?? '',
+      branch_color: ps.skills?.branches?.color ?? '#000000',
+    })),
+  }
+}
 
 async function assertProjectMapsAccess(): Promise<void> {
   const profile = await getUserProfile()
