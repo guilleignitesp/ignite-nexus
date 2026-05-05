@@ -43,6 +43,8 @@ export interface ActiveAssignment {
   workerFirstName: string
   workerLastName: string
   workerStatus: string
+  startDate: string
+  endDate: string | null
 }
 
 // ─── Week helpers ─────────────────────────────────────────────
@@ -97,6 +99,8 @@ type RawAssignment = {
   id: string
   group_id: string
   worker_id: string
+  start_date: string
+  end_date: string | null
   workers: { id: string; first_name: string; last_name: string; status: string } | null
 }
 
@@ -186,15 +190,20 @@ export async function getWeekSessions(
 
 // ─── Q3: Active permanent assignments (live, authenticated) ──
 
-export async function getActiveGroupAssignments(): Promise<ActiveAssignment[]> {
+export async function getActiveGroupAssignments(asOfDate?: string): Promise<ActiveAssignment[]> {
   const supabase = await createClient()
 
-  const { data, error } = await supabase
+  const base = supabase
     .from('group_assignments')
-    .select('id, group_id, worker_id, workers(id, first_name, last_name, status)')
-    .is('end_date', null)
+    .select('id, group_id, worker_id, start_date, end_date, workers(id, first_name, last_name, status)')
     .eq('type', 'permanent')
-    .eq('is_active', true)
+
+  const { data, error } = asOfDate
+    ? await base
+        .lte('start_date', asOfDate)
+        .or(`end_date.is.null,end_date.gte.${asOfDate}`)
+    : await base
+        .eq('is_active', true)
 
   if (error) throw new Error(error.message)
 
@@ -209,5 +218,7 @@ export async function getActiveGroupAssignments(): Promise<ActiveAssignment[]> {
       workerFirstName: a.workers!.first_name,
       workerLastName: a.workers!.last_name,
       workerStatus: a.workers!.status,
+      startDate: a.start_date,
+      endDate: a.end_date,
     }))
 }

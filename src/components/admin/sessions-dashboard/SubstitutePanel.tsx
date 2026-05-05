@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { WeekSession, ActiveAssignment } from '@/lib/data/sessions-dashboard'
 import {
@@ -129,11 +130,22 @@ function WorkerSection({
   )
 }
 
+function norm(s: string) {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+}
+
+function filterWorkers(workers: WorkerLayerItem[], q: string): WorkerLayerItem[] {
+  if (!q.trim()) return workers
+  const nq = norm(q.trim())
+  return workers.filter((w) => norm(w.firstName).includes(nq) || norm(w.lastName).includes(nq))
+}
+
 export function SubstitutePanel({ session, assignments, onClose }: Props) {
   const t = useTranslations('sessionsDashboard')
   const [availability, setAvailability] = useState<AvailabilityResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [workerSearch, setWorkerSearch] = useState('')
 
   useEffect(() => {
     setLoading(true)
@@ -183,23 +195,29 @@ export function SubstitutePanel({ session, assignments, onClose }: Props) {
 
         {availability && !loading && (
           <div style={{ paddingTop: '0.5rem' }}>
+            <Input
+              value={workerSearch}
+              onChange={(e) => setWorkerSearch(e.target.value)}
+              placeholder="Buscar profesor..."
+              className="mb-3 h-8 text-sm"
+            />
             <WorkerSection
               title={t('p1Title')}
-              workers={availability.p1Surplus}
+              workers={filterWorkers(availability.p1Surplus, workerSearch)}
               sessionId={session.id}
               showAdd
               onAdded={onClose}
             />
             <WorkerSection
               title={t('p2Title')}
-              workers={availability.p2Free}
+              workers={filterWorkers(availability.p2Free, workerSearch)}
               sessionId={session.id}
               showAdd
               onAdded={onClose}
             />
             <WorkerSection
               title={t('p3Title')}
-              workers={availability.p3Critical}
+              workers={filterWorkers(availability.p3Critical, workerSearch)}
               sessionId={session.id}
               showAdd={false}
               titleColor="var(--destructive)"
@@ -207,7 +225,7 @@ export function SubstitutePanel({ session, assignments, onClose }: Props) {
             />
             <WorkerSection
               title={t('p4Title')}
-              workers={availability.p4Unavailable}
+              workers={filterWorkers(availability.p4Unavailable, workerSearch)}
               sessionId={session.id}
               showAdd={false}
               titleColor="var(--muted-foreground)"
@@ -215,7 +233,7 @@ export function SubstitutePanel({ session, assignments, onClose }: Props) {
             />
             <WorkerSection
               title={t('p5Title')}
-              workers={availability.p5Inactive}
+              workers={filterWorkers(availability.p5Inactive, workerSearch)}
               sessionId={session.id}
               showAdd={false}
               titleColor="var(--muted-foreground)"

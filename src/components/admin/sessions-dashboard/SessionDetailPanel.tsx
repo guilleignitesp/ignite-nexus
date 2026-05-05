@@ -83,6 +83,10 @@ export function SessionDetailPanel({
 
   const isLocked = session.isConsolidated
 
+  const dateAssignments = assignments.filter(
+    (a) => a.startDate <= session.date && (a.endDate === null || a.endDate >= session.date)
+  )
+
   const absentIds = new Set(
     session.teacherChanges
       .filter((tc) => tc.type === 'absent' && tc.isActive)
@@ -184,8 +188,8 @@ export function SessionDetailPanel({
     return (
       <SubstitutePanel
         session={session}
-        assignments={assignments}
-        onClose={() => setSubstituteOpen(false)}
+        assignments={dateAssignments}
+        onClose={() => { router.refresh(); setSubstituteOpen(false) }}
       />
     )
   }
@@ -194,6 +198,7 @@ export function SessionDetailPanel({
     return (
       <PermanentAssignmentDialog
         group={{ id: session.groupId, name: groupName }}
+        sessionDate={session.date}
         onClose={() => setPermanentOpen(false)}
       />
     )
@@ -322,11 +327,11 @@ export function SessionDetailPanel({
                 {t('manageTeam')}
               </Button>
             </div>
-            {assignments.length === 0 ? (
+            {dateAssignments.length === 0 ? (
               <p style={{ fontSize: '0.8rem', color: 'var(--muted-foreground)' }}>{t('noTeam')}</p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                {assignments.map((a) => {
+                {dateAssignments.map((a) => {
                   const isAbsent = absentIds.has(a.workerId)
                   const absenceSTA = isAbsent
                     ? session.teacherChanges.find(

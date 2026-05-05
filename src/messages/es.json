@@ -207,6 +207,8 @@
     "addTeacherTitle": "Nuevo profesor",
     "firstNameLabel": "Nombre",
     "lastNameLabel": "Apellidos",
+    "emailLabel": "Email",
+    "passwordLabel": "Contraseña",
     "addTeacherSubmit": "Crear profesor",
     "cancel": "Cancelar",
     "saveError": "Ha ocurrido un error al guardar",

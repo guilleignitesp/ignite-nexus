@@ -9,23 +9,24 @@ import type {
   WeekSession,
   ActiveAssignment,
 } from '@/lib/data/sessions-dashboard'
+import type { Worker } from '@/lib/data/schools'
 import { addDays } from '@/lib/utils/week-helpers'
 import { WeekGrid } from './WeekGrid'
 import { SessionDetailPanel } from './SessionDetailPanel'
-import { PermanentAssignmentDialog } from './PermanentAssignmentDialog'
 import { AuditPanel } from './AuditPanel'
 
 interface Props {
   schools: DashboardSchool[]
   sessions: WeekSession[]
   assignments: ActiveAssignment[]
+  workers: Worker[]
   weekStart: string
   today: string
   locale: string
 }
 
 interface SelectedSession {
-  session: WeekSession
+  sessionId: string
   groupName: string
   schoolName: string
 }
@@ -34,6 +35,7 @@ export function SessionsDashboard({
   schools,
   sessions,
   assignments,
+  workers,
   weekStart,
   today,
   locale,
@@ -42,15 +44,11 @@ export function SessionsDashboard({
   const router = useRouter()
 
   const [selectedSession, setSelectedSession] = useState<SelectedSession | null>(null)
-  const [selectedGroupForPermanent, setSelectedGroupForPermanent] = useState<{
-    id: string
-    name: string
-  } | null>(null)
   const [auditOpen, setAuditOpen] = useState(false)
 
   const workerNames = new Map<string, string>()
-  for (const a of assignments) {
-    workerNames.set(a.workerId, `${a.workerFirstName} ${a.workerLastName}`)
+  for (const w of workers) {
+    workerNames.set(w.id, `${w.first_name} ${w.last_name}`)
   }
 
   function prevWeek() {
@@ -90,35 +88,29 @@ export function SessionsDashboard({
         schools={schools}
         sessions={sessions}
         assignments={assignments}
+        workerNames={workerNames}
         weekStart={weekStart}
         today={today}
         onSessionClick={(session, groupName, schoolName) =>
-          setSelectedSession({ session, groupName, schoolName })
+          setSelectedSession({ sessionId: session.id, groupName, schoolName })
         }
-        onPermanentClick={(group) => setSelectedGroupForPermanent(group)}
       />
 
       {/* Session detail panel */}
-      {selectedSession && (
-        <SessionDetailPanel
-          session={selectedSession.session}
-          groupName={selectedSession.groupName}
-          schoolName={selectedSession.schoolName}
-          assignments={assignments.filter(
-            (a) => a.groupId === selectedSession.session.groupId
-          )}
-          workerNames={workerNames}
-          onClose={() => setSelectedSession(null)}
-        />
-      )}
-
-      {/* Permanent assignment dialog (opened from grid or from detail panel) */}
-      {selectedGroupForPermanent && (
-        <PermanentAssignmentDialog
-          group={selectedGroupForPermanent}
-          onClose={() => setSelectedGroupForPermanent(null)}
-        />
-      )}
+      {selectedSession && (() => {
+        const currentSession = sessions.find(s => s.id === selectedSession.sessionId)
+        if (!currentSession) return null
+        return (
+          <SessionDetailPanel
+            session={currentSession}
+            groupName={selectedSession.groupName}
+            schoolName={selectedSession.schoolName}
+            assignments={assignments.filter(a => a.groupId === currentSession.groupId)}
+            workerNames={workerNames}
+            onClose={() => setSelectedSession(null)}
+          />
+        )
+      })()}
 
       <AuditPanel open={auditOpen} onClose={() => setAuditOpen(false)} />
     </div>

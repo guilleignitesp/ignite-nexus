@@ -22,12 +22,16 @@ export function AddTeacherDialog() {
   const [open, setOpen] = useState(false)
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
   function resetForm() {
     setFirstName('')
     setLastName('')
+    setEmail('')
+    setPassword('')
     setError(null)
   }
 
@@ -41,11 +45,11 @@ export function AddTeacherDialog() {
     setError(null)
     startTransition(async () => {
       try {
-        await createWorker(firstName, lastName)
+        await createWorker(firstName, lastName, email, password)
         setOpen(false)
         router.refresh()
-      } catch {
-        setError(t('saveError'))
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t('saveError'))
       }
     })
   }
@@ -61,24 +65,49 @@ export function AddTeacherDialog() {
             <DialogTitle>{t('addTeacherTitle')}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="teacher-first-name">{t('firstNameLabel')}</Label>
+                <Input
+                  id="teacher-first-name"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  disabled={isPending}
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="teacher-last-name">{t('lastNameLabel')}</Label>
+                <Input
+                  id="teacher-last-name"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  disabled={isPending}
+                  required
+                />
+              </div>
+            </div>
             <div className="space-y-1.5">
-              <Label htmlFor="teacher-first-name">{t('firstNameLabel')}</Label>
+              <Label htmlFor="teacher-email">{t('emailLabel')}</Label>
               <Input
-                id="teacher-first-name"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
+                id="teacher-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 disabled={isPending}
                 required
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="teacher-last-name">{t('lastNameLabel')}</Label>
+              <Label htmlFor="teacher-password">{t('passwordLabel')}</Label>
               <Input
-                id="teacher-last-name"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
+                id="teacher-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 disabled={isPending}
                 required
+                minLength={6}
               />
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}

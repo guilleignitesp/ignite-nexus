@@ -3,7 +3,9 @@ import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { requireAdmin } from '@/lib/auth'
 import { getWorkerProfile } from '@/lib/data/teachers'
+import { getWorkerEmail } from '@/lib/actions/teachers'
 import { PermissionsGrid } from '@/components/admin/teachers/PermissionsGrid'
+import { TeacherProfileActions } from '@/components/admin/teachers/TeacherProfileActions'
 
 export default async function TeacherProfilePage({
   params,
@@ -12,18 +14,17 @@ export default async function TeacherProfilePage({
 }) {
   const { locale, workerId } = await params
 
-  // requireAdmin and getUserProfile are deduplicated via React.cache()
   const currentUser = await requireAdmin(locale)
+  const canManageTeachers =
+    currentUser.isSuperAdmin || currentUser.adminModules.includes('teachers')
 
-  const [t, worker] = await Promise.all([
+  const [t, worker, workerEmail] = await Promise.all([
     getTranslations('teachers'),
     getWorkerProfile(workerId),
+    canManageTeachers ? getWorkerEmail(workerId).catch(() => null) : Promise.resolve(null),
   ])
 
   if (!worker) notFound()
-
-  const canManageTeachers =
-    currentUser.isSuperAdmin || currentUser.adminModules.includes('teachers')
 
   return (
     <div className="space-y-8">
@@ -41,6 +42,9 @@ export default async function TeacherProfilePage({
           <h1 className="text-2xl font-bold tracking-tight">
             {worker.first_name} {worker.last_name}
           </h1>
+          {workerEmail && (
+            <p className="mt-0.5 text-sm text-muted-foreground">{workerEmail}</p>
+          )}
           <span
             className={`mt-2 inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
               worker.status === 'active'
@@ -53,22 +57,28 @@ export default async function TeacherProfilePage({
         </div>
 
         {canManageTeachers && (
-          <form
-            action={async () => {
-              'use server'
-              const { toggleWorkerStatus } = await import(
-                '@/lib/actions/teachers'
-              )
-              await toggleWorkerStatus(workerId)
-            }}
-          >
-            <button
-              type="submit"
-              className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors"
+          <div className="flex flex-col items-end gap-3">
+            <form
+              action={async () => {
+                'use server'
+                const { toggleWorkerStatus } = await import('@/lib/actions/teachers')
+                await toggleWorkerStatus(workerId)
+              }}
             >
-              {t('toggleStatus')}
-            </button>
-          </form>
+              <button
+                type="submit"
+                className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors"
+              >
+                {t('toggleStatus')}
+              </button>
+            </form>
+            <TeacherProfileActions
+              workerId={workerId}
+              firstName={worker.first_name}
+              lastName={worker.last_name}
+              email={workerEmail}
+            />
+          </div>
         )}
       </div>
 

@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   getGroupPermanentAssignments,
@@ -20,6 +21,7 @@ import {
 
 interface Props {
   group: { id: string; name: string }
+  sessionDate?: string
   onClose: () => void
 }
 
@@ -37,7 +39,7 @@ type WorkerItem = {
   conflict: boolean
 }
 
-export function PermanentAssignmentDialog({ group, onClose }: Props) {
+export function PermanentAssignmentDialog({ group, sessionDate, onClose }: Props) {
   const t = useTranslations('sessionsDashboard')
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -48,14 +50,15 @@ export function PermanentAssignmentDialog({ group, onClose }: Props) {
   const [manualConflicts, setManualConflicts] = useState(0)
   const [pendingAdd, setPendingAdd] = useState<WorkerItem | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [workerSearch, setWorkerSearch] = useState('')
 
   async function loadData() {
     setLoading(true)
     setError(null)
     try {
       const [currentData, availableData] = await Promise.all([
-        getGroupPermanentAssignments(group.id),
-        searchWorkersForAssignment('', group.id),
+        getGroupPermanentAssignments(group.id, sessionDate),
+        searchWorkersForAssignment('', group.id, sessionDate),
       ])
       setCurrent(currentData)
       setAvailable(availableData)
@@ -74,7 +77,7 @@ export function PermanentAssignmentDialog({ group, onClose }: Props) {
     setError(null)
     startTransition(async () => {
       try {
-        const result = await addPermanentAssignment(group.id, worker.id, false)
+        const result = await addPermanentAssignment(group.id, worker.id, false, sessionDate)
         if (result.manualConflicts > 0) {
           setManualConflicts(result.manualConflicts)
           setPendingAdd(worker)
@@ -93,7 +96,7 @@ export function PermanentAssignmentDialog({ group, onClose }: Props) {
     setError(null)
     startTransition(async () => {
       try {
-        await addPermanentAssignment(group.id, pendingAdd.id, true)
+        await addPermanentAssignment(group.id, pendingAdd.id, true, sessionDate)
         setManualConflicts(0)
         setPendingAdd(null)
         await loadData()
@@ -108,7 +111,7 @@ export function PermanentAssignmentDialog({ group, onClose }: Props) {
     setError(null)
     startTransition(async () => {
       try {
-        await removePermanentAssignment(assignmentId)
+        await removePermanentAssignment(assignmentId, sessionDate)
         await loadData()
         router.refresh()
       } catch (e) {
@@ -117,11 +120,21 @@ export function PermanentAssignmentDialog({ group, onClose }: Props) {
     })
   }
 
+  function norm(s: string) {
+    return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  }
+
   // Sort: non-conflicting first (both groups sorted by last name)
-  const sortedAvailable = [...available].sort((a, b) => {
-    if (a.conflict !== b.conflict) return a.conflict ? 1 : -1
-    return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`)
-  })
+  const sortedAvailable = [...available]
+    .sort((a, b) => {
+      if (a.conflict !== b.conflict) return a.conflict ? 1 : -1
+      return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`)
+    })
+    .filter((w) => {
+      if (!workerSearch.trim()) return true
+      const q = norm(workerSearch.trim())
+      return norm(w.firstName).includes(q) || norm(w.lastName).includes(q)
+    })
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
@@ -243,6 +256,12 @@ export function PermanentAssignmentDialog({ group, onClose }: Props) {
           >
             {t('allWorkers')}
           </div>
+          <Input
+            value={workerSearch}
+            onChange={(e) => setWorkerSearch(e.target.value)}
+            placeholder="Buscar profesor..."
+            className="mb-2 h-8 text-sm"
+          />
 
           {loading ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>

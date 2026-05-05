@@ -207,6 +207,8 @@
     "addTeacherTitle": "New teacher",
     "firstNameLabel": "First name",
     "lastNameLabel": "Last name",
+    "emailLabel": "Email",
+    "passwordLabel": "Password",
     "addTeacherSubmit": "Create teacher",
     "cancel": "Cancel",
     "saveError": "An error occurred while saving",

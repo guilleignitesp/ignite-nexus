@@ -8,7 +8,9 @@ interface Props {
   sessions: WeekSession[]
   schedule: { startTime: string; endTime: string } | undefined
   assignments: ActiveAssignment[]
+  workerNames: Map<string, string>
   groupName: string
+  sessionDate: string
   onSessionClick: (session: WeekSession) => void
 }
 
@@ -28,10 +30,16 @@ export function GroupDayCell({
   sessions,
   schedule,
   assignments,
+  workerNames,
   groupName,
+  sessionDate,
   onSessionClick,
 }: Props) {
   const t = useTranslations('sessionsDashboard')
+
+  const dateAssignments = assignments.filter(
+    (a) => a.startDate <= sessionDate && (a.endDate === null || a.endDate >= sessionDate)
+  )
 
   if (sessions.length === 0) {
     if (!schedule) return null
@@ -90,9 +98,9 @@ export function GroupDayCell({
             </div>
 
             {/* Permanent teachers */}
-            {assignments.length > 0 && (
+            {dateAssignments.length > 0 && (
               <div style={{ marginTop: '0.25rem', display: 'flex', flexDirection: 'column', gap: '0.125rem' }}>
-                {assignments.map((a) => {
+                {dateAssignments.map((a) => {
                   const isAbsent = absentIds.has(a.workerId)
                   return (
                     <span
@@ -111,10 +119,14 @@ export function GroupDayCell({
               </div>
             )}
 
-            {/* Substitutes badge */}
+            {/* Substitutes */}
             {substitutes.length > 0 && (
-              <div style={{ marginTop: '0.125rem', fontSize: '0.65rem', color: 'var(--primary)' }}>
-                +{substitutes.length} {t('substitutesBadge', { count: substitutes.length })}
+              <div style={{ marginTop: '0.125rem', display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                {substitutes.map((sub) => (
+                  <span key={sub.id} style={{ fontSize: '0.7rem', color: 'var(--primary)', fontStyle: 'italic' }}>
+                    ↪ {workerNames.get(sub.workerId) ?? `#${sub.workerId.slice(0, 6)}`}
+                  </span>
+                ))}
               </div>
             )}
           </button>

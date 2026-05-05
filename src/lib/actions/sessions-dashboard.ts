@@ -34,6 +34,14 @@ export interface ChangeLogEntry {
   isSessionChange: boolean
 }
 
+// ─── Helpers ──────────────────────────────────────────────────
+
+function subtractDay(dateStr: string): string {
+  const d = new Date(`${dateStr}T12:00:00`)
+  d.setDate(d.getDate() - 1)
+  return d.toISOString().slice(0, 10)
+}
+
 // ─── Auth helper ──────────────────────────────────────────────
 
 async function assertDashboardAccess(): Promise<string> {
@@ -91,13 +99,13 @@ export async function getWorkerAvailability(
     status: string
   }[]
 
-  // Step 3: Get all active permanent group_assignments
+  // Step 3: Get permanent group_assignments active on the session date
   const { data: assignmentsData, error: assignmentsError } = await supabase
     .from('group_assignments')
     .select('id, group_id, worker_id, groups(school_id)')
-    .is('end_date', null)
     .eq('type', 'permanent')
-    .eq('is_active', true)
+    .lte('start_date', session.session_date)
+    .or(`end_date.is.null,end_date.gte.${session.session_date}`)
 
   if (assignmentsError) throw new Error(assignmentsError.message)
 
@@ -109,17 +117,13 @@ export async function getWorkerAvailability(
   }
   const permanentAssignments = (assignmentsData ?? []) as unknown as AssignmentWithGroup[]
 
-  // Build map: workerId → permanent group info
-  const workerPermanentGroup = new Map<
-    string,
-    { groupId: string; schoolId: string }
-  >()
+  // Build map: workerId → ALL permanent groups (a worker can be in multiple groups)
+  const workerPermanentGroups = new Map<string, { groupId: string; schoolId: string }[]>()
   for (const a of permanentAssignments) {
     if (a.groups) {
-      workerPermanentGroup.set(a.worker_id, {
-        groupId: a.group_id,
-        schoolId: a.groups.school_id,
-      })
+      const arr = workerPermanentGroups.get(a.worker_id) ?? []
+      arr.push({ groupId: a.group_id, schoolId: a.groups.school_id })
+      workerPermanentGroups.set(a.worker_id, arr)
     }
   }
 
@@ -176,11 +180,6 @@ export async function getWorkerAvailability(
     }
   }
 
-  // Build group name map from assignments
-  const groupNameMap = new Map<string, string>()
-  // We don't have group names here, but we can use group IDs as fallback
-  // They'll be enriched if we want — for now just track group IDs
-
   const result: AvailabilityResult = {
     p1Surplus: [],
     p2Free: [],
@@ -210,85 +209,68 @@ export async function getWorkerAvailability(
       continue
     }
 
-    // Check if worker has permanent assignment
-    const permGroup = workerPermanentGroup.get(worker.id)
-    if (permGroup) {
-      // Check if their permanent group has an overlapping session
+    // Check all permanent groups for this worker
+    const permGroups = workerPermanentGroups.get(worker.id) ?? []
+    let isCritical = false
+    let isAbsentFromAllOverlapping = true
+    let hasAnyOverlap = false
+    let surplusSchoolId: string | null = null
+
+    for (const permGroup of permGroups) {
       const permGroupSessions = sessionsByGroup.get(permGroup.groupId) ?? []
+      if (permGroupSessions.length === 0) continue
 
-      if (permGroupSessions.length > 0) {
-        // Find overlapping sessions for their permanent group
-        let isAbsent = false
-        let isCritical = false
+      hasAnyOverlap = true
 
-        for (const os of permGroupSessions) {
-          // Check if worker is marked absent for this specific session
-          const absentSTA = (os.session_teacher_assignments ?? []).find(
-            (sta) => sta.worker_id === worker.id && sta.type === 'absent' && sta.is_active
-          )
-          if (absentSTA) {
-            isAbsent = true
-            continue
-          }
+      for (const os of permGroupSessions) {
+        const absentSTA = (os.session_teacher_assignments ?? []).find(
+          (sta) => sta.worker_id === worker.id && sta.type === 'absent' && sta.is_active
+        )
 
-          // Count effective permanent teachers for this overlapping session
-          // Permanent teachers = all workers permanently assigned to that group
-          const permanentForGroup = permanentAssignments.filter(
-            (a) => a.group_id === permGroup.groupId
-          )
-          const absentWorkerIds = new Set(
-            (os.session_teacher_assignments ?? [])
-              .filter((sta) => sta.type === 'absent' && sta.is_active)
-              .map((sta) => sta.worker_id)
-          )
-          const effectiveCount = permanentForGroup.filter(
-            (a) => !absentWorkerIds.has(a.worker_id)
-          ).length
+        const permanentForGroup = permanentAssignments.filter(
+          (a) => a.group_id === permGroup.groupId
+        )
+        const absentWorkerIds = new Set(
+          (os.session_teacher_assignments ?? [])
+            .filter((sta) => sta.type === 'absent' && sta.is_active)
+            .map((sta) => sta.worker_id)
+        )
+        const effectiveCount = permanentForGroup.filter(
+          (a) => !absentWorkerIds.has(a.worker_id)
+        ).length
+        const minRequired = os.min_teachers_required ?? 1
 
-          const minRequired = os.min_teachers_required ?? 1
+        if (absentSTA) {
+          // Worker already absent — their absence is included in effectiveCount, no action needed
+        } else {
+          // Worker is present in this session
+          isAbsentFromAllOverlapping = false
           if (effectiveCount <= minRequired) {
             isCritical = true
-            break
+          } else if (surplusSchoolId === null) {
+            surplusSchoolId = permGroup.schoolId
           }
         }
-
-        if (isAbsent && !isCritical) {
-          // Worker is absent from their own session — treat as free
-          result.p2Free.push({
-            id: worker.id,
-            firstName: worker.first_name,
-            lastName: worker.last_name,
-          })
-          continue
-        }
-
-        if (isCritical) {
-          result.p3Critical.push({
-            id: worker.id,
-            firstName: worker.first_name,
-            lastName: worker.last_name,
-          })
-          continue
-        }
-
-        // Surplus
-        const differentSchool = permGroup.schoolId !== ourSchoolId
-        result.p1Surplus.push({
-          id: worker.id,
-          firstName: worker.first_name,
-          lastName: worker.last_name,
-          differentSchool,
-        })
-        continue
       }
     }
 
-    // P2: free (no overlapping session, or permanent group has no session this time)
-    result.p2Free.push({
-      id: worker.id,
-      firstName: worker.first_name,
-      lastName: worker.last_name,
-    })
+    if (hasAnyOverlap) {
+      if (isCritical) {
+        result.p3Critical.push({ id: worker.id, firstName: worker.first_name, lastName: worker.last_name })
+        continue
+      }
+      if (isAbsentFromAllOverlapping) {
+        result.p2Free.push({ id: worker.id, firstName: worker.first_name, lastName: worker.last_name })
+        continue
+      }
+      // Surplus in at least one group
+      const differentSchool = surplusSchoolId !== null && surplusSchoolId !== ourSchoolId
+      result.p1Surplus.push({ id: worker.id, firstName: worker.first_name, lastName: worker.last_name, differentSchool })
+      continue
+    }
+
+    // P2: free — no permanent group has an overlapping session
+    result.p2Free.push({ id: worker.id, firstName: worker.first_name, lastName: worker.last_name })
   }
 
   return result
@@ -344,24 +326,27 @@ export async function addSubstitute(
     }
   }
 
-  // Check permanent assignments on overlapping sessions
+  // Check permanent assignments active on the session date (Fix 2: date-range filter)
   const { data: permanentConflict } = await supabase
     .from('group_assignments')
     .select('id, group_id')
     .eq('worker_id', workerId)
-    .is('end_date', null)
     .eq('type', 'permanent')
-    .eq('is_active', true)
+    .lte('start_date', sess.session_date)
+    .or(`end_date.is.null,end_date.gte.${sess.session_date}`)
 
-  if (permanentConflict && permanentConflict.length > 0) {
-    const permGroupIds = (permanentConflict as { id: string; group_id: string }[]).map(
-      (a) => a.group_id
-    )
+  const permGroupIds = (permanentConflict ?? []).map(
+    (a: { id: string; group_id: string }) => a.group_id
+  )
 
+  // Sessions to auto-absent the worker from (Fix 3: surplus → auto-absent)
+  const surplusSessionIds: string[] = []
+
+  if (permGroupIds.length > 0) {
     const { data: permSessions } = await supabase
       .from('sessions')
       .select(
-        'id, plannings(group_id), session_teacher_assignments(worker_id, type, is_active)'
+        'id, min_teachers_required, plannings(group_id), session_teacher_assignments(worker_id, type, is_active)'
       )
       .eq('session_date', sess.session_date)
       .lt('start_time', sess.end_time)
@@ -370,6 +355,7 @@ export async function addSubstitute(
 
     type PermSession = {
       id: string
+      min_teachers_required: number
       plannings: { group_id: string } | null
       session_teacher_assignments: { worker_id: string; type: string; is_active: boolean }[]
     }
@@ -377,19 +363,41 @@ export async function addSubstitute(
 
     for (const ps of permSessionsList) {
       const gid = ps.plannings?.group_id
-      if (gid && permGroupIds.includes(gid)) {
-        // Worker is permanently assigned to this group — check if they're absent
-        const isAbsent = (ps.session_teacher_assignments ?? []).some(
-          (sta) => sta.worker_id === workerId && sta.type === 'absent' && sta.is_active
-        )
-        if (!isAbsent) {
-          throw new Error('CONFLICT: already assigned to session at this time')
-        }
+      if (!gid || !permGroupIds.includes(gid)) continue
+
+      const isAbsent = (ps.session_teacher_assignments ?? []).some(
+        (sta) => sta.worker_id === workerId && sta.type === 'absent' && sta.is_active
+      )
+      if (isAbsent) continue  // already absent — no conflict
+
+      // Worker is present — check if their group is surplus or critical
+      const { data: permForGroup } = await supabase
+        .from('group_assignments')
+        .select('worker_id')
+        .eq('group_id', gid)
+        .eq('type', 'permanent')
+        .lte('start_date', sess.session_date)
+        .or(`end_date.is.null,end_date.gte.${sess.session_date}`)
+
+      const allPermIds = ((permForGroup ?? []) as { worker_id: string }[]).map((a) => a.worker_id)
+      const absentIds = new Set(
+        (ps.session_teacher_assignments ?? [])
+          .filter((sta) => sta.type === 'absent' && sta.is_active)
+          .map((sta) => sta.worker_id)
+      )
+      const effectiveCount = allPermIds.filter((id) => !absentIds.has(id)).length
+      const minRequired = ps.min_teachers_required ?? 1
+
+      if (effectiveCount <= minRequired) {
+        throw new Error('CONFLICT: already assigned to session at this time')
       }
+
+      // Surplus — schedule auto-absent
+      surplusSessionIds.push(ps.id)
     }
   }
 
-  // Insert STA
+  // Insert substitute STA
   const { data: insertedSTA, error: insertError } = await supabase
     .from('session_teacher_assignments')
     .insert({
@@ -405,14 +413,48 @@ export async function addSubstitute(
 
   if (insertError) throw new Error(insertError.message)
 
-  // Log
+  // Auto-absent worker from surplus sessions and collect their ids
+  const autoAbsenceIds: string[] = []
+  for (const surplusSessionId of surplusSessionIds) {
+    const { data: absentSTA, error: absentError } = await supabase
+      .from('session_teacher_assignments')
+      .insert({
+        session_id: surplusSessionId,
+        worker_id: workerId,
+        type: 'absent',
+        valid_from: sess.session_date,
+        valid_until: sess.session_date,
+        is_active: true,
+      })
+      .select('id')
+      .single()
+
+    if (absentError) throw new Error(absentError.message)
+
+    const absenceId = (absentSTA as { id: string }).id
+    autoAbsenceIds.push(absenceId)
+
+    await supabase.from('dashboard_change_log').insert({
+      session_id: surplusSessionId,
+      worker_id: workerId,
+      changed_by: changedBy,
+      change_type: 'absent_mark',
+      previous_state: null,
+      new_state: { assignment_id: absenceId },
+    })
+  }
+
+  // Log substitute — include auto_absence_ids so removeSubstitute can undo them
   const { error: logError } = await supabase.from('dashboard_change_log').insert({
     session_id: sessionId,
     worker_id: workerId,
     changed_by: changedBy,
     change_type: 'substitute_add',
     previous_state: null,
-    new_state: { assignment_id: (insertedSTA as { id: string }).id },
+    new_state: {
+      assignment_id: (insertedSTA as { id: string }).id,
+      auto_absence_ids: autoAbsenceIds,
+    },
   })
 
   if (logError) throw new Error(logError.message)
@@ -437,7 +479,7 @@ export async function removeSubstitute(
 
   const { session_id, worker_id } = sta as { id: string; session_id: string; worker_id: string }
 
-  // Deactivate
+  // Deactivate substitute STA
   const { error: updateError } = await supabase
     .from('session_teacher_assignments')
     .update({ is_active: false })
@@ -445,7 +487,53 @@ export async function removeSubstitute(
 
   if (updateError) throw new Error(updateError.message)
 
-  // Log
+  // Look up the original add-log to find auto-created absence STAs
+  const { data: logEntry } = await supabase
+    .from('dashboard_change_log')
+    .select('new_state')
+    .eq('change_type', 'substitute_add')
+    .eq('worker_id', worker_id)
+    .eq('session_id', session_id)
+    .eq('is_reverted', false)
+    .order('changed_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  type SubstituteLogState = { assignment_id: string; auto_absence_ids?: string[] }
+  const logState = (logEntry as { new_state: SubstituteLogState } | null)?.new_state
+
+  const autoAbsenceIds: string[] =
+    logState?.assignment_id === substituteAssignmentId
+      ? (logState.auto_absence_ids ?? [])
+      : []
+
+  // Undo auto-absences created when this substitute was added
+  for (const absenceId of autoAbsenceIds) {
+    const { error: absenceUpdateError } = await supabase
+      .from('session_teacher_assignments')
+      .update({ is_active: false })
+      .eq('id', absenceId)
+
+    if (absenceUpdateError) throw new Error(absenceUpdateError.message)
+
+    // Find the session_id for this absence STA so we can log it properly
+    const { data: absenceSTA } = await supabase
+      .from('session_teacher_assignments')
+      .select('session_id')
+      .eq('id', absenceId)
+      .single()
+
+    await supabase.from('dashboard_change_log').insert({
+      session_id: (absenceSTA as { session_id: string } | null)?.session_id ?? null,
+      worker_id,
+      changed_by: changedBy,
+      change_type: 'absent_unmark',
+      previous_state: { assignment_id: absenceId },
+      new_state: null,
+    })
+  }
+
+  // Log substitute removal
   const { error: logError } = await supabase.from('dashboard_change_log').insert({
     session_id,
     worker_id,
@@ -717,17 +805,24 @@ export async function getGroupProjects(
 // ─── getGroupPermanentAssignments ─────────────────────────────
 
 export async function getGroupPermanentAssignments(
-  groupId: string
+  groupId: string,
+  asOfDate?: string
 ): Promise<{ id: string; workerId: string; firstName: string; lastName: string }[]> {
   const supabase = await createClient()
 
-  const { data, error } = await supabase
+  const base = supabase
     .from('group_assignments')
     .select('id, worker_id, workers(id, first_name, last_name)')
     .eq('group_id', groupId)
-    .is('end_date', null)
     .eq('type', 'permanent')
-    .eq('is_active', true)
+
+  const { data, error } = asOfDate
+    ? await base
+        .lte('start_date', asOfDate)
+        .or(`end_date.is.null,end_date.gte.${asOfDate}`)
+    : await base
+        .is('end_date', null)
+        .eq('is_active', true)
 
   if (error) throw new Error(error.message)
 
@@ -747,43 +842,88 @@ export async function getGroupPermanentAssignments(
     }))
 }
 
+// ─── getSessionTeam ───────────────────────────────────────────
+
+export async function getSessionTeam(
+  sessionId: string
+): Promise<{ id: string; workerId: string; firstName: string; lastName: string }[]> {
+  await assertDashboardAccess()
+  const supabase = await createClient()
+
+  const { data: sessRaw, error: sessError } = await supabase
+    .from('sessions')
+    .select('session_date, plannings(group_id)')
+    .eq('id', sessionId)
+    .single()
+
+  if (sessError || !sessRaw) throw new Error(sessError?.message ?? 'Session not found')
+
+  type SessInfo = { session_date: string; plannings: { group_id: string } | null }
+  const sess = sessRaw as unknown as SessInfo
+  const groupId = sess.plannings?.group_id
+  if (!groupId) throw new Error('Session has no group')
+
+  return getGroupPermanentAssignments(groupId, sess.session_date)
+}
+
 // ─── addPermanentAssignment ───────────────────────────────────
 
 export async function addPermanentAssignment(
   groupId: string,
   workerId: string,
-  force: boolean
+  force: boolean,
+  effectiveFromDate?: string
 ): Promise<{ manualConflicts: number }> {
   const changedBy = await assertDashboardAccess()
   const supabase = await createClient()
 
   const today = new Date().toISOString().slice(0, 10)
+  const effectiveDate = effectiveFromDate ?? today
 
-  // Check if already permanently assigned
-  const { data: existing } = await supabase
-    .from('group_assignments')
-    .select('id')
-    .eq('group_id', groupId)
-    .eq('worker_id', workerId)
-    .is('end_date', null)
-    .eq('type', 'permanent')
-    .eq('is_active', true)
-    .maybeSingle()
+  // Check if already assigned on effectiveDate
+  const existingCheck = effectiveFromDate
+    ? await supabase
+        .from('group_assignments')
+        .select('id')
+        .eq('group_id', groupId)
+        .eq('worker_id', workerId)
+        .eq('type', 'permanent')
+        .lte('start_date', effectiveDate)
+        .or(`end_date.is.null,end_date.gte.${effectiveDate}`)
+        .maybeSingle()
+    : await supabase
+        .from('group_assignments')
+        .select('id')
+        .eq('group_id', groupId)
+        .eq('worker_id', workerId)
+        .is('end_date', null)
+        .eq('type', 'permanent')
+        .eq('is_active', true)
+        .maybeSingle()
 
-  if (existing) return { manualConflicts: 0 }
+  if (existingCheck.data) return { manualConflicts: 0 }
 
-  // Count future un-consolidated sessions for this group that have STAs for this worker
-  const { data: conflictingSessions } = await supabase
-    .from('sessions')
-    .select(
-      'id, session_teacher_assignments!inner(id, worker_id, is_active)'
-    )
-    .gte('session_date', today)
-    .eq('is_consolidated', false)
-    .eq('session_teacher_assignments.worker_id', workerId)
-    .eq('session_teacher_assignments.is_active', true)
+  // When effectiveFromDate is provided, close any open-ended assignment
+  if (effectiveFromDate) {
+    const { data: openAssignment } = await supabase
+      .from('group_assignments')
+      .select('id')
+      .eq('group_id', groupId)
+      .eq('worker_id', workerId)
+      .eq('type', 'permanent')
+      .is('end_date', null)
+      .eq('is_active', true)
+      .maybeSingle()
 
-  // We need to filter by group via plannings
+    if (openAssignment) {
+      const { error: closeError } = await supabase
+        .from('group_assignments')
+        .update({ end_date: subtractDay(effectiveFromDate) })
+        .eq('id', (openAssignment as { id: string }).id)
+      if (closeError) throw new Error(closeError.message)
+    }
+  }
+
   // Get plannings for this group
   const { data: planningRows } = await supabase
     .from('plannings')
@@ -793,12 +933,6 @@ export async function addPermanentAssignment(
 
   const planningIds = ((planningRows ?? []) as { id: string }[]).map((p) => p.id)
 
-  type ConflictSession = {
-    id: string
-    session_teacher_assignments: { id: string; worker_id: string; is_active: boolean }[]
-  }
-
-  // Filter sessions that belong to this group's plannings
   let conflictSTAIds: string[] = []
   let manualConflicts = 0
 
@@ -809,7 +943,7 @@ export async function addPermanentAssignment(
         'id, planning_id, session_teacher_assignments(id, worker_id, type, is_active)'
       )
       .in('planning_id', planningIds)
-      .gte('session_date', today)
+      .gte('session_date', effectiveDate)
       .eq('is_consolidated', false)
 
     type GroupSession = {
@@ -851,7 +985,7 @@ export async function addPermanentAssignment(
     .insert({
       worker_id: workerId,
       group_id: groupId,
-      start_date: today,
+      start_date: effectiveDate,
       end_date: null,
       type: 'permanent',
       is_active: true,
@@ -877,12 +1011,14 @@ export async function addPermanentAssignment(
 // ─── removePermanentAssignment ────────────────────────────────
 
 export async function removePermanentAssignment(
-  assignmentId: string
+  assignmentId: string,
+  effectiveFromDate?: string
 ): Promise<void> {
   const changedBy = await assertDashboardAccess()
   const supabase = await createClient()
 
   const today = new Date().toISOString().slice(0, 10)
+  const endDate = effectiveFromDate ? subtractDay(effectiveFromDate) : today
 
   // Fetch assignment details needed for logging
   const { data, error: fetchError } = await supabase
@@ -895,9 +1031,13 @@ export async function removePermanentAssignment(
 
   const { group_id, worker_id } = data as { id: string; group_id: string; worker_id: string }
 
+  const updatePayload = effectiveFromDate
+    ? { end_date: endDate }
+    : { end_date: endDate, is_active: false }
+
   const { error: updateError } = await supabase
     .from('group_assignments')
-    .update({ end_date: today, is_active: false })
+    .update(updatePayload)
     .eq('id', assignmentId)
 
   if (updateError) throw new Error(updateError.message)
@@ -917,23 +1057,32 @@ export async function removePermanentAssignment(
 
 export async function searchWorkersForAssignment(
   query: string,
-  groupId: string
+  groupId: string,
+  asOfDate?: string
 ): Promise<{ id: string; firstName: string; lastName: string; conflict: boolean }[]> {
   const supabase = await createClient()
 
-  // Run in parallel: target group's weekdays + currently assigned worker IDs + all active workers
+  // Run in parallel: target group's schedule + currently assigned worker IDs + all active workers
   const [scheduleResult, assignedResult, workersResult] = await Promise.all([
     supabase
       .from('group_schedule')
-      .select('weekday')
+      .select('weekday, start_time, end_time')
       .eq('group_id', groupId),
-    supabase
-      .from('group_assignments')
-      .select('worker_id')
-      .eq('group_id', groupId)
-      .is('end_date', null)
-      .eq('type', 'permanent')
-      .eq('is_active', true),
+    asOfDate
+      ? supabase
+          .from('group_assignments')
+          .select('worker_id')
+          .eq('group_id', groupId)
+          .eq('type', 'permanent')
+          .lte('start_date', asOfDate)
+          .or(`end_date.is.null,end_date.gte.${asOfDate}`)
+      : supabase
+          .from('group_assignments')
+          .select('worker_id')
+          .eq('group_id', groupId)
+          .is('end_date', null)
+          .eq('type', 'permanent')
+          .eq('is_active', true),
     (() => {
       let q = supabase
         .from('workers')
@@ -949,9 +1098,12 @@ export async function searchWorkersForAssignment(
 
   if (workersResult.error) throw new Error(workersResult.error.message)
 
-  const targetWeekdays = new Set(
-    ((scheduleResult.data ?? []) as { weekday: number }[]).map((s) => s.weekday)
-  )
+  type ScheduleSlot = { weekday: number; startTime: string; endTime: string }
+
+  const targetSchedule: ScheduleSlot[] = (
+    (scheduleResult.data ?? []) as { weekday: number; start_time: string; end_time: string }[]
+  ).map((s) => ({ weekday: s.weekday, startTime: s.start_time, endTime: s.end_time }))
+
   const assignedIds = new Set(
     ((assignedResult.data ?? []) as { worker_id: string }[]).map((a) => a.worker_id)
   )
@@ -959,7 +1111,7 @@ export async function searchWorkersForAssignment(
   const workers = ((workersResult.data ?? []) as { id: string; first_name: string; last_name: string }[])
     .filter((w) => !assignedIds.has(w.id))
 
-  if (workers.length === 0 || targetWeekdays.size === 0) {
+  if (workers.length === 0 || targetSchedule.length === 0) {
     return workers.map((w) => ({
       id: w.id,
       firstName: w.first_name,
@@ -991,18 +1143,18 @@ export async function searchWorkersForAssignment(
     }))
   }
 
-  // Get weekdays for those other groups
+  // Get schedule slots (with times) for those other groups
   const { data: otherSchedules } = await supabase
     .from('group_schedule')
-    .select('group_id, weekday')
+    .select('group_id, weekday, start_time, end_time')
     .in('group_id', otherGroupIds)
 
-  // Build map: group_id → Set<weekday>
-  const otherGroupWeekdays = new Map<string, Set<number>>()
-  for (const s of ((otherSchedules ?? []) as { group_id: string; weekday: number }[])) {
-    const set = otherGroupWeekdays.get(s.group_id) ?? new Set<number>()
-    set.add(s.weekday)
-    otherGroupWeekdays.set(s.group_id, set)
+  // Build map: group_id → ScheduleSlot[]
+  const otherGroupSchedules = new Map<string, ScheduleSlot[]>()
+  for (const s of ((otherSchedules ?? []) as { group_id: string; weekday: number; start_time: string; end_time: string }[])) {
+    const arr = otherGroupSchedules.get(s.group_id) ?? []
+    arr.push({ weekday: s.weekday, startTime: s.start_time, endTime: s.end_time })
+    otherGroupSchedules.set(s.group_id, arr)
   }
 
   // Build map: worker_id → group_ids[]
@@ -1016,8 +1168,15 @@ export async function searchWorkersForAssignment(
   return workers.map((w) => {
     const otherGroups = workerOtherGroups.get(w.id) ?? []
     const conflict = otherGroups.some((gid) => {
-      const weekdays = otherGroupWeekdays.get(gid)
-      return weekdays ? [...targetWeekdays].some((day) => weekdays.has(day)) : false
+      const otherSlots = otherGroupSchedules.get(gid) ?? []
+      return targetSchedule.some((tSlot) =>
+        otherSlots.some(
+          (oSlot) =>
+            oSlot.weekday === tSlot.weekday &&
+            oSlot.startTime < tSlot.endTime &&
+            oSlot.endTime > tSlot.startTime
+        )
+      )
     })
     return { id: w.id, firstName: w.first_name, lastName: w.last_name, conflict }
   })
@@ -1111,7 +1270,7 @@ export async function revertChange(changeId: string): Promise<void> {
     worker_id: string | null
     change_type: string
     previous_state: { assignment_id: string } | null
-    new_state: { assignment_id: string } | null
+    new_state: { assignment_id: string; auto_absence_ids?: string[] } | null
     is_reverted: boolean
     changed_at: string
   }

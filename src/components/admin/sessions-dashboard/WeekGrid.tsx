@@ -14,10 +14,10 @@ interface Props {
   schools: DashboardSchool[]
   sessions: WeekSession[]
   assignments: ActiveAssignment[]
+  workerNames: Map<string, string>
   weekStart: string
   today: string
   onSessionClick: (session: WeekSession, groupName: string, schoolName: string) => void
-  onPermanentClick: (group: { id: string; name: string }) => void
 }
 
 function getDayOfWeek(dateStr: string): number {
@@ -37,10 +37,10 @@ export function WeekGrid({
   schools,
   sessions,
   assignments,
+  workerNames,
   weekStart,
   today,
   onSessionClick,
-  onPermanentClick,
 }: Props) {
   const t = useTranslations('sessionsDashboard')
 
@@ -133,27 +133,6 @@ export function WeekGrid({
                   }}
                 >
                   <div>{school.name}</div>
-                  {school.groups.map((group) => (
-                    <button
-                      key={group.id}
-                      onClick={() => onPermanentClick({ id: group.id, name: group.name })}
-                      style={{
-                        display: 'block',
-                        fontSize: '0.65rem',
-                        color: 'var(--muted-foreground)',
-                        marginTop: '0.25rem',
-                        cursor: 'pointer',
-                        background: 'none',
-                        border: 'none',
-                        padding: 0,
-                        textDecoration: 'underline',
-                        textDecorationStyle: 'dotted',
-                        textAlign: 'left',
-                      }}
-                    >
-                      {group.name} — {t('manageTeam')}
-                    </button>
-                  ))}
                 </td>
 
                 {/* One day cell per column, aggregating all groups for this school */}
@@ -198,7 +177,9 @@ export function WeekGrid({
                                   : undefined
                               }
                               assignments={groupAssignments}
+                              workerNames={workerNames}
                               groupName={group.name}
+                              sessionDate={day}
                               onSessionClick={(session) =>
                                 onSessionClick(session, group.name, school.name)
                               }

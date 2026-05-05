@@ -207,6 +207,8 @@
     "addTeacherTitle": "Nou professor",
     "firstNameLabel": "Nom",
     "lastNameLabel": "Cognoms",
+    "emailLabel": "Email",
+    "passwordLabel": "Contrasenya",
     "addTeacherSubmit": "Crear professor",
     "cancel": "Cancel·lar",
     "saveError": "S'ha produït un error en desar",
