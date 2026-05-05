@@ -22,6 +22,20 @@ export async function createSchool(name: string): Promise<void> {
   updateTag('schools')
 }
 
+export async function updateSchoolTeam(
+  schoolId: string,
+  teamId: string | null
+): Promise<void> {
+  await assertSchoolsAccess()
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('schools')
+    .update({ team_id: teamId })
+    .eq('id', schoolId)
+  if (error) throw new Error(error.message)
+  updateTag('schools')
+}
+
 export async function createGroup(input: {
   name: string
   schoolId: string

@@ -4,6 +4,8 @@ import { updateTag } from 'next/cache'
 import { createClient } from '@/lib/supabase-server'
 import { createAdminClient } from '@/lib/supabase-admin'
 import { getUserProfile } from '@/lib/auth'
+import { getTeams } from '@/lib/data/teachers'
+import type { Team } from '@/lib/data/teachers'
 
 async function assertTeachersAccess(): Promise<void> {
   const profile = await getUserProfile()
@@ -23,7 +25,7 @@ export async function createWorker(
   lastName: string,
   email: string,
   password: string
-): Promise<void> {
+): Promise<string> {
   await assertTeachersAccess()
   const adminClient = createAdminClient()
 
@@ -34,14 +36,15 @@ export async function createWorker(
   })
   if (authError) throw new Error(authError.message)
 
-  const { error } = await adminClient.from('workers').insert({
+  const { data: workerData, error } = await adminClient.from('workers').insert({
     user_id: authData.user.id,
     first_name: firstName.trim(),
     last_name: lastName.trim(),
     status: 'active',
-  })
+  }).select('id').single()
   if (error) throw new Error(error.message)
   updateTag('workers')
+  return (workerData as { id: string }).id
 }
 
 export async function toggleWorkerStatus(workerId: string): Promise<void> {
@@ -247,5 +250,44 @@ export async function setSuperAdmin(
     if (error) throw new Error(error.message)
   }
 
+  updateTag('workers')
+}
+
+// ─── Team actions ─────────────────────────────────────────────
+
+export async function getTeamsList(): Promise<Team[]> {
+  await assertTeachersAccess()
+  return getTeams()
+}
+
+export async function addWorkerTeam(workerId: string, teamId: string): Promise<void> {
+  await assertTeachersAccess()
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('worker_teams')
+    .insert({ worker_id: workerId, team_id: teamId })
+  if (error) throw new Error(error.message)
+  updateTag('workers')
+}
+
+export async function removeWorkerTeam(workerId: string, teamId: string): Promise<void> {
+  await assertTeachersAccess()
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('worker_teams')
+    .delete()
+    .eq('worker_id', workerId)
+    .eq('team_id', teamId)
+  if (error) throw new Error(error.message)
+  updateTag('workers')
+}
+
+export async function createTeam(code: string, name: string): Promise<void> {
+  await assertTeachersAccess()
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('teams')
+    .insert({ code: code.trim().toUpperCase(), name: name.trim(), is_active: true })
+  if (error) throw new Error(error.message)
   updateTag('workers')
 }

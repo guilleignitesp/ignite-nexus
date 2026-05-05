@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
-import { createWorker } from '@/lib/actions/teachers'
+import { createWorker, addWorkerTeam, getTeamsList } from '@/lib/actions/teachers'
+import type { Team } from '@/lib/data/teachers'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -26,6 +27,20 @@ export function AddTeacherDialog() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  const [teams, setTeams] = useState<Team[]>([])
+  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([])
+
+  useEffect(() => {
+    if (open) {
+      getTeamsList().then(setTeams).catch(() => {})
+    }
+  }, [open])
+
+  function toggleTeam(id: string) {
+    setSelectedTeamIds((prev) =>
+      prev.includes(id) ? prev.filter((tid) => tid !== id) : [...prev, id]
+    )
+  }
 
   function resetForm() {
     setFirstName('')
@@ -33,6 +48,7 @@ export function AddTeacherDialog() {
     setEmail('')
     setPassword('')
     setError(null)
+    setSelectedTeamIds([])
   }
 
   function handleOpenChange(val: boolean) {
@@ -45,7 +61,8 @@ export function AddTeacherDialog() {
     setError(null)
     startTransition(async () => {
       try {
-        await createWorker(firstName, lastName, email, password)
+        const workerId = await createWorker(firstName, lastName, email, password)
+        await Promise.all(selectedTeamIds.map((tid) => addWorkerTeam(workerId, tid)))
         setOpen(false)
         router.refresh()
       } catch (err) {
@@ -110,6 +127,26 @@ export function AddTeacherDialog() {
                 minLength={6}
               />
             </div>
+            {teams.length > 0 && (
+              <div className="space-y-1.5">
+                <Label>Equipos</Label>
+                <div className="flex flex-wrap gap-2">
+                  {teams.map((team) => (
+                    <label key={team.id} className="flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm hover:bg-muted/50">
+                      <input
+                        type="checkbox"
+                        checked={selectedTeamIds.includes(team.id)}
+                        onChange={() => toggleTeam(team.id)}
+                        disabled={isPending}
+                        className="size-3.5"
+                      />
+                      <span className="font-medium">{team.code}</span>
+                      <span className="text-muted-foreground">{team.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
             {error && <p className="text-sm text-destructive">{error}</p>}
             <DialogFooter>
               <DialogClose

@@ -2,6 +2,7 @@ import { getTranslations } from 'next-intl/server'
 import { requireAdmin } from '@/lib/auth'
 import { getSchoolsWithGroups } from '@/lib/data/schools'
 import { getSchoolYears } from '@/lib/data/settings'
+import { getTeams } from '@/lib/data/teachers'
 import { SchoolsList } from '@/components/admin/schools/SchoolsList'
 
 export default async function SchoolsPage({
@@ -12,10 +13,11 @@ export default async function SchoolsPage({
   const { locale } = await params
   await requireAdmin(locale)
 
-  const [t, schools, schoolYears] = await Promise.all([
+  const [t, schools, schoolYears, teams] = await Promise.all([
     getTranslations('schools'),
     getSchoolsWithGroups(),
     getSchoolYears(),
+    getTeams(),
   ])
 
   return (
@@ -28,6 +30,7 @@ export default async function SchoolsPage({
         schools={schools}
         schoolYears={schoolYears}
         locale={locale}
+        teams={teams}
       />
     </div>
   )

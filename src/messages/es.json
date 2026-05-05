@@ -505,7 +505,8 @@
     "goToTimesheet": "Fichaje",
     "goToAbsences": "Ausencias",
     "goToResources": "Recursos",
-    "goToProjectMaps": "Mapas de proyectos"
+    "goToProjectMaps": "Mapas de proyectos",
+    "goToAllGroups": "Todos los grupos"
   },
   "teacherGroup": {
     "backToHome": "← Volver",

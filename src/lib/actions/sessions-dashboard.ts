@@ -67,7 +67,7 @@ export async function getWorkerAvailability(
   const { data: sessionRaw, error: sessionError } = await supabase
     .from('sessions')
     .select(
-      'id, session_date, start_time, end_time, min_teachers_required, plannings(group_id, groups(school_id))'
+      'id, session_date, start_time, end_time, min_teachers_required, plannings(group_id, groups(school_id, schools(team_id)))'
     )
     .eq('id', sessionId)
     .single()
@@ -80,11 +80,15 @@ export async function getWorkerAvailability(
     start_time: string
     end_time: string
     min_teachers_required: number
-    plannings: { group_id: string; groups: { school_id: string } | null } | null
+    plannings: {
+      group_id: string
+      groups: { school_id: string; schools: { team_id: string | null } | null } | null
+    } | null
   }
   const session = sessionRaw as unknown as SessionRaw
   const ourSchoolId = session.plannings?.groups?.school_id ?? null
   const ourGroupId = session.plannings?.group_id ?? null
+  const schoolTeamId = session.plannings?.groups?.schools?.team_id ?? null
 
   // Step 2: Get all workers
   const { data: workersData, error: workersError } = await supabase
@@ -98,6 +102,23 @@ export async function getWorkerAvailability(
     last_name: string
     status: string
   }[]
+
+  // Step 2.5: Team filtering — if school has a team, exclude workers assigned to other teams
+  let eligibleWorkerIds: Set<string> | null = null
+  if (schoolTeamId !== null) {
+    const { data: wtData } = await supabase.from('worker_teams').select('worker_id, team_id')
+    const wtAll = (wtData ?? []) as { worker_id: string; team_id: string }[]
+    const workersWithTeam = new Set(wtAll.map((wt) => wt.worker_id))
+    const workersInSchoolTeam = new Set(
+      wtAll.filter((wt) => wt.team_id === schoolTeamId).map((wt) => wt.worker_id)
+    )
+    eligibleWorkerIds = new Set<string>()
+    for (const w of allWorkers) {
+      if (!workersWithTeam.has(w.id) || workersInSchoolTeam.has(w.id)) {
+        eligibleWorkerIds.add(w.id)
+      }
+    }
+  }
 
   // Step 3: Get permanent group_assignments active on the session date
   const { data: assignmentsData, error: assignmentsError } = await supabase
@@ -189,6 +210,8 @@ export async function getWorkerAvailability(
   }
 
   for (const worker of allWorkers) {
+    if (eligibleWorkerIds !== null && !eligibleWorkerIds.has(worker.id)) continue
+
     // P5: inactive
     if (worker.status !== 'active') {
       result.p5Inactive.push({
@@ -288,7 +311,7 @@ export async function addSubstitute(
   // Get session details
   const { data: sessionRaw, error: sessionError } = await supabase
     .from('sessions')
-    .select('id, session_date, start_time, end_time, plannings(group_id)')
+    .select('id, session_date, start_time, end_time, plannings(group_id, groups(schools(team_id)))')
     .eq('id', sessionId)
     .single()
 
@@ -299,9 +322,22 @@ export async function addSubstitute(
     session_date: string
     start_time: string
     end_time: string
-    plannings: { group_id: string } | null
+    plannings: { group_id: string; groups: { schools: { team_id: string | null } | null } | null } | null
   }
   const sess = sessionRaw as unknown as SessionInfo
+  const schoolTeamId = sess.plannings?.groups?.schools?.team_id ?? null
+
+  // Team guard — worker must have no teams or share the school's team
+  if (schoolTeamId !== null) {
+    const { data: wtData } = await supabase
+      .from('worker_teams')
+      .select('team_id')
+      .eq('worker_id', workerId)
+    const workerTeamIds = new Set(((wtData ?? []) as { team_id: string }[]).map((wt) => wt.team_id))
+    if (workerTeamIds.size > 0 && !workerTeamIds.has(schoolTeamId)) {
+      throw new Error('TEAM_MISMATCH')
+    }
+  }
 
   // Anti-double: find overlapping sessions where worker is permanent (not absent) or substitute
   const { data: overlapData } = await supabase
@@ -1062,8 +1098,8 @@ export async function searchWorkersForAssignment(
 ): Promise<{ id: string; firstName: string; lastName: string; conflict: boolean }[]> {
   const supabase = await createClient()
 
-  // Run in parallel: target group's schedule + currently assigned worker IDs + all active workers
-  const [scheduleResult, assignedResult, workersResult] = await Promise.all([
+  // Run in parallel: group schedule + assigned workers + all active workers + group's school team
+  const [scheduleResult, assignedResult, workersResult, groupSchoolResult] = await Promise.all([
     supabase
       .from('group_schedule')
       .select('weekday, start_time, end_time')
@@ -1094,6 +1130,7 @@ export async function searchWorkersForAssignment(
       }
       return q
     })(),
+    supabase.from('groups').select('schools(team_id)').eq('id', groupId).maybeSingle(),
   ])
 
   if (workersResult.error) throw new Error(workersResult.error.message)
@@ -1108,8 +1145,25 @@ export async function searchWorkersForAssignment(
     ((assignedResult.data ?? []) as { worker_id: string }[]).map((a) => a.worker_id)
   )
 
-  const workers = ((workersResult.data ?? []) as { id: string; first_name: string; last_name: string }[])
+  type GroupSchoolRow = { schools: { team_id: string | null } | null }
+  const schoolTeamId = (groupSchoolResult.data as unknown as GroupSchoolRow | null)?.schools?.team_id ?? null
+
+  let workers = ((workersResult.data ?? []) as { id: string; first_name: string; last_name: string }[])
     .filter((w) => !assignedIds.has(w.id))
+
+  // Team filtering — exclude workers assigned to other teams
+  if (schoolTeamId !== null && workers.length > 0) {
+    const { data: wtData } = await supabase
+      .from('worker_teams')
+      .select('worker_id, team_id')
+      .in('worker_id', workers.map((w) => w.id))
+    const wtAll = (wtData ?? []) as { worker_id: string; team_id: string }[]
+    const workersWithTeam = new Set(wtAll.map((wt) => wt.worker_id))
+    const workersInSchoolTeam = new Set(
+      wtAll.filter((wt) => wt.team_id === schoolTeamId).map((wt) => wt.worker_id)
+    )
+    workers = workers.filter((w) => !workersWithTeam.has(w.id) || workersInSchoolTeam.has(w.id))
+  }
 
   if (workers.length === 0 || targetSchedule.length === 0) {
     return workers.map((w) => ({
@@ -1199,6 +1253,91 @@ export async function getAuditLog(): Promise<ChangeLogEntry[]> {
     )
     .order('changed_at', { ascending: false })
     .limit(200)
+
+  if (error) throw new Error(error.message)
+
+  type RawLogEntry = {
+    id: string
+    change_type: string
+    changed_at: string
+    is_reverted: boolean
+    previous_state: unknown
+    new_state: unknown
+    worker: { first_name: string; last_name: string } | null
+    changer: { first_name: string; last_name: string } | null
+    sessions: {
+      session_date: string
+      plannings: {
+        groups: { name: string; schools: { name: string } | null } | null
+      } | null
+    } | null
+    groups: { name: string; schools: { name: string } | null } | null
+  }
+
+  return ((data ?? []) as unknown as RawLogEntry[]).map((entry) => {
+    const sessionDate = entry.sessions?.session_date ?? ''
+    const groupName =
+      entry.sessions?.plannings?.groups?.name ?? entry.groups?.name ?? ''
+    const schoolName =
+      entry.sessions?.plannings?.groups?.schools?.name ??
+      entry.groups?.schools?.name ??
+      ''
+    return {
+      id: entry.id,
+      sessionDate,
+      groupName,
+      schoolName,
+      workerName: entry.worker
+        ? `${entry.worker.first_name} ${entry.worker.last_name}`
+        : '',
+      changedByName: entry.changer
+        ? `${entry.changer.first_name} ${entry.changer.last_name}`
+        : '',
+      changeType: entry.change_type,
+      changedAt: entry.changed_at,
+      isReverted: entry.is_reverted,
+      isSessionChange: entry.sessions !== null,
+    }
+  })
+}
+
+// ─── getGroupAuditLog ─────────────────────────────────────────
+
+export async function getGroupAuditLog(groupId: string): Promise<ChangeLogEntry[]> {
+  await assertDashboardAccess()
+  const supabase = await createClient()
+
+  const { data: planningRows } = await supabase
+    .from('plannings')
+    .select('id')
+    .eq('group_id', groupId)
+
+  const planningIds = ((planningRows ?? []) as { id: string }[]).map((p) => p.id)
+
+  let sessionIds: string[] = []
+  if (planningIds.length > 0) {
+    const { data: sessionRows } = await supabase
+      .from('sessions')
+      .select('id')
+      .in('planning_id', planningIds)
+    sessionIds = ((sessionRows ?? []) as { id: string }[]).map((s) => s.id)
+  }
+
+  const baseQuery = supabase
+    .from('dashboard_change_log')
+    .select(
+      `id, change_type, changed_at, is_reverted, previous_state, new_state,
+       worker:worker_id(first_name, last_name),
+       changer:changed_by(first_name, last_name),
+       sessions(session_date, plannings(groups(name, schools(name)))),
+       groups:group_id(name, schools(name))`
+    )
+    .order('changed_at', { ascending: false })
+    .limit(100)
+
+  const { data, error } = sessionIds.length > 0
+    ? await baseQuery.or(`session_id.in.(${sessionIds.join(',')}),group_id.eq.${groupId}`)
+    : await baseQuery.eq('group_id', groupId)
 
   if (error) throw new Error(error.message)
 

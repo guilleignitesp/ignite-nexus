@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
-import { Plus, Users } from 'lucide-react'
+import { Plus, History } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -22,7 +22,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { PermanentAssignmentDialog } from '@/components/admin/sessions-dashboard/PermanentAssignmentDialog'
 import { GenerateSessionsForm } from './GenerateSessionsForm'
 import {
   searchStudentsForEnrollment,
@@ -33,8 +32,26 @@ import {
   adminUpdateSession,
   deleteSession,
 } from '@/lib/actions/schools'
-import { getGroupProjects } from '@/lib/actions/sessions-dashboard'
+import { getGroupProjects, getGroupAuditLog, type ChangeLogEntry } from '@/lib/actions/sessions-dashboard'
 import type { GroupAdminDetail, GroupSession } from '@/lib/data/schools'
+
+const AUDIT_BADGE_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+  substitute_add: 'default',
+  substitute_remove: 'destructive',
+  absent_mark: 'destructive',
+  absent_unmark: 'secondary',
+  permanent_add: 'default',
+  permanent_remove: 'secondary',
+}
+
+const AUDIT_CHANGE_LABEL: Record<string, string> = {
+  substitute_add: 'Sustituto añadido',
+  substitute_remove: 'Sustituto eliminado',
+  absent_mark: 'Ausencia marcada',
+  absent_unmark: 'Ausencia revertida',
+  permanent_add: 'Profesor asignado',
+  permanent_remove: 'Profesor eliminado',
+}
 
 const WEEKDAY_LABEL: Record<number, string> = {
   1: 'Lun', 2: 'Mar', 3: 'Mié', 4: 'Jue', 5: 'Vie',
@@ -65,7 +82,21 @@ export function GroupDetailClient({ group }: Props) {
   const tDash = useTranslations('sessionsDashboard')
   const router = useRouter()
 
-  const [permanentDialogOpen, setPermanentDialogOpen] = useState(false)
+  const [groupAuditOpen, setGroupAuditOpen] = useState(false)
+  const [auditEntries, setAuditEntries] = useState<ChangeLogEntry[]>([])
+  const [auditLoading, setAuditLoading] = useState(false)
+
+  async function loadGroupAudit() {
+    setAuditLoading(true)
+    try {
+      const data = await getGroupAuditLog(group.id)
+      setAuditEntries(data)
+    } catch {
+      // ignore
+    } finally {
+      setAuditLoading(false)
+    }
+  }
 
   // Add student dialog
   const [addStudentOpen, setAddStudentOpen] = useState(false)
@@ -257,9 +288,9 @@ export function GroupDetailClient({ group }: Props) {
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold">{t('teachersTitle')}</h2>
-          <Button size="sm" variant="outline" onClick={() => setPermanentDialogOpen(true)}>
-            <Users />
-            {t('manageTeam')}
+          <Button size="sm" variant="outline" onClick={() => { setGroupAuditOpen(true); loadGroupAudit() }}>
+            <History />
+            Ver historial
           </Button>
         </div>
         {group.teachers.length === 0 ? (
@@ -429,15 +460,59 @@ export function GroupDetailClient({ group }: Props) {
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      {permanentDialogOpen && (
-        <PermanentAssignmentDialog
-          group={{ id: group.id, name: group.name }}
-          onClose={() => {
-            setPermanentDialogOpen(false)
-            router.refresh()
-          }}
-        />
-      )}
+      {/* Group audit history sheet */}
+      <Sheet open={groupAuditOpen} onOpenChange={(o) => { if (!o) setGroupAuditOpen(false) }}>
+        <SheetContent side="right" className="sm:max-w-lg" style={{ overflowY: 'auto' }}>
+          <SheetHeader>
+            <SheetTitle>Historial de cambios — {group.name}</SheetTitle>
+          </SheetHeader>
+          <div style={{ padding: '0 1rem 1rem' }}>
+            {auditLoading && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingTop: '1rem' }}>
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} style={{ height: '4rem', borderRadius: '0.375rem', background: 'var(--muted)', animation: 'pulse 1.5s infinite' }} />
+                ))}
+              </div>
+            )}
+            {!auditLoading && auditEntries.length === 0 && (
+              <p style={{ fontSize: '0.875rem', color: 'var(--muted-foreground)', paddingTop: '1rem', textAlign: 'center' }}>
+                Sin cambios registrados
+              </p>
+            )}
+            {!auditLoading && auditEntries.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingTop: '0.75rem' }}>
+                {auditEntries.map((entry) => (
+                  <div
+                    key={entry.id}
+                    style={{
+                      border: '1px solid var(--border)',
+                      borderRadius: '0.375rem',
+                      padding: '0.75rem',
+                      opacity: entry.isReverted ? 0.6 : 1,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', flexWrap: 'wrap', marginBottom: '0.25rem' }}>
+                      <Badge variant={AUDIT_BADGE_VARIANT[entry.changeType] ?? 'outline'} style={{ fontSize: '0.65rem' }}>
+                        {AUDIT_CHANGE_LABEL[entry.changeType] ?? entry.changeType}
+                      </Badge>
+                      {entry.isReverted && (
+                        <Badge variant="outline" style={{ fontSize: '0.65rem' }}>Revertido</Badge>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 500 }}>{entry.workerName || '—'}</div>
+                    {entry.sessionDate && (
+                      <div style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>{entry.sessionDate}</div>
+                    )}
+                    <div style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>
+                      {new Date(entry.changedAt).toLocaleString('es', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })} · por {entry.changedByName}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Add student dialog */}
       <Dialog

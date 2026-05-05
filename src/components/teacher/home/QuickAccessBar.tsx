@@ -1,6 +1,6 @@
 import { useTranslations } from 'next-intl'
 import Link from 'next/link'
-import { Clock, UserX, Globe, Map } from 'lucide-react'
+import { Clock, UserX, Globe, Map, LayoutGrid } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface QuickAccessBarProps {
@@ -16,6 +16,7 @@ export function QuickAccessBar({ locale }: QuickAccessBarProps) {
     { href: `${base}/absences`,     label: t('goToAbsences'),     icon: UserX },
     { href: `${base}/resources`,    label: t('goToResources'),    icon: Globe },
     { href: `${base}/project-maps`, label: t('goToProjectMaps'), icon: Map },
+    { href: `${base}/groups`,       label: t('goToAllGroups'),   icon: LayoutGrid },
   ]
 
   return (

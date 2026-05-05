@@ -190,3 +190,35 @@ export async function getWorkerProfile(
     current_groups,
   }
 }
+
+// ─── Teams ────────────────────────────────────────────────────
+
+export interface Team {
+  id: string
+  code: string
+  name: string
+  is_active: boolean
+}
+
+export async function getTeams(): Promise<Team[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('teams')
+    .select('id, code, name, is_active')
+    .eq('is_active', true)
+    .order('name')
+  if (error) throw new Error(error.message)
+  return (data ?? []) as Team[]
+}
+
+export async function getWorkerTeams(workerId: string): Promise<Team[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('worker_teams')
+    .select('teams(id, code, name, is_active)')
+    .eq('worker_id', workerId)
+  if (error) throw new Error(error.message)
+  return ((data ?? []) as unknown as { teams: Team | null }[])
+    .filter((r) => r.teams !== null)
+    .map((r) => r.teams!)
+}

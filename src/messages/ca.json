@@ -505,7 +505,8 @@
     "goToTimesheet": "Fitxatge",
     "goToAbsences": "Absències",
     "goToResources": "Recursos",
-    "goToProjectMaps": "Mapes de projectes"
+    "goToProjectMaps": "Mapes de projectes",
+    "goToAllGroups": "Tots els grups"
   },
   "teacherGroup": {
     "backToHome": "← Tornar",

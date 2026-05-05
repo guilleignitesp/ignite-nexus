@@ -28,6 +28,8 @@ export interface Group {
 export interface School {
   id: string
   name: string
+  teamId: string | null
+  teamName: string | null
   student_count: number
   groups: Group[]
 }
@@ -56,6 +58,8 @@ type RawGroup = {
 type RawSchool = {
   id: string
   name: string
+  team_id: string | null
+  teams: { id: string; name: string } | null
   groups: RawGroup[]
 }
 
@@ -93,6 +97,8 @@ function transformSchools(raw: RawSchool[]): School[] {
     return {
       id: school.id,
       name: school.name,
+      teamId: school.team_id ?? null,
+      teamName: school.teams?.name ?? null,
       student_count: uniqueStudents.size,
       groups,
     }
@@ -104,7 +110,7 @@ export async function getSchoolsWithGroups(): Promise<School[]> {
   const { data, error } = await supabase
     .from('schools')
     .select(
-      'id, name, groups(id, name, is_active, school_year_id, school_years(name), group_enrollments(student_id, is_active), group_schedule(weekday, start_time, end_time), group_assignments(end_date, workers(id, first_name, last_name)))'
+      'id, name, team_id, teams(id, name), groups(id, name, is_active, school_year_id, school_years(name), group_enrollments(student_id, is_active), group_schedule(weekday, start_time, end_time), group_assignments(end_date, workers(id, first_name, last_name)))'
     )
     .eq('is_active', true)
     .order('name')

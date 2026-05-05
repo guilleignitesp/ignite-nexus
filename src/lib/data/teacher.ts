@@ -1,5 +1,7 @@
+import { createClient as createPublicClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase-server'
 import type { TrafficLight, SessionStatus } from '@/types'
+import { getMondayOf, addDays } from '@/lib/utils/week-helpers'
 
 export type { TrafficLight, SessionStatus }
 
@@ -146,6 +148,7 @@ type RawGroup = {
 
 type RawAssignment = {
   group_id: string
+  start_date: string
   end_date: string | null
   groups: RawGroup | null
 }
@@ -198,7 +201,7 @@ export async function getTeacherDashboard(workerId: string): Promise<TeacherDash
     .select(`
       id, first_name,
       group_assignments(
-        group_id, end_date,
+        group_id, start_date, end_date,
         groups(
           id, name, is_active,
           schools(id, name),
@@ -218,12 +221,19 @@ export async function getTeacherDashboard(workerId: string): Promise<TeacherDash
 
   if (error || !worker) return null
 
+  const today = new Date().toISOString().slice(0, 10)
+  const weekStart = getMondayOf(today)
+  const weekEnd = addDays(weekStart, 4)
+
   const assignments = ((worker as unknown as {
     id: string
     first_name: string
     group_assignments: RawAssignment[]
   }).group_assignments ?? []).filter(
-    (a) => a.end_date === null && a.groups?.is_active
+    (a) =>
+      a.groups?.is_active &&
+      a.start_date <= weekEnd &&
+      (a.end_date === null || a.end_date >= weekStart)
   )
 
   const groups: TeacherGroupCard[] = assignments.map((a) => {
@@ -255,48 +265,32 @@ export async function getTeacherDashboard(workerId: string): Promise<TeacherDash
   }
 }
 
-// ─── getGroupDetail ────────────────────────────────────────────────────────
+// ─── buildGroupDetail (shared logic) ─────────────────────────────────────
 
-export async function getGroupDetail(
-  groupId: string,
-  workerId: string
-): Promise<GroupDetail | null> {
+const GROUP_FIELDS_SELECT = `
+  id, name, is_active,
+  schools(id, name),
+  group_schedule(weekday, start_time, end_time),
+  group_enrollments(
+    is_active,
+    students(id, first_name, last_name)
+  ),
+  plannings(
+    id, is_active, project_map_id,
+    planning_project_log(id, project_id, assigned_at, status,
+      projects(id, name, material_type)
+    ),
+    project_maps(
+      id, initial_project_id,
+      project_map_nodes(project_id, projects(id, name, material_type)),
+      project_map_edges(from_project_id, to_project_id)
+    )
+  )
+`
+
+async function buildGroupDetail(g: RawGroup): Promise<GroupDetail> {
   const supabase = await createClient()
 
-  // Step 1: structural data + ownership check (single query)
-  const { data: assignment, error: aErr } = await supabase
-    .from('group_assignments')
-    .select(`
-      group_id, end_date,
-      groups(
-        id, name, is_active,
-        schools(id, name),
-        group_schedule(weekday, start_time, end_time),
-        group_enrollments(
-          is_active,
-          students(id, first_name, last_name)
-        ),
-        plannings(
-          id, is_active, project_map_id,
-          planning_project_log(id, project_id, assigned_at, status,
-            projects(id, name, material_type)
-          ),
-          project_maps(
-            id, initial_project_id,
-            project_map_nodes(project_id, projects(id, name, material_type)),
-            project_map_edges(from_project_id, to_project_id)
-          )
-        )
-      )
-    `)
-    .eq('worker_id', workerId)
-    .eq('group_id', groupId)
-    .is('end_date', null)
-    .maybeSingle()
-
-  if (aErr || !assignment?.groups) return null
-
-  const g = assignment.groups as unknown as RawGroup
   const schedule: ScheduleSlot[] = (g.group_schedule ?? []).map((s) => ({
     weekday: s.weekday,
     startTime: s.start_time,
@@ -312,16 +306,13 @@ export async function getGroupDetail(
     }))
     .sort((a, b) => a.lastName.localeCompare(b.lastName))
 
-  // Determine active planning
   const activePlannings = (g.plannings ?? []).filter((p) => p.is_active)
   const rawPlanning = activePlannings[0] ?? null
 
-  // Determine if today is a class day
   const todayWd = jsWeekday()
   const todaySlotRaw = schedule.find((s) => s.weekday === todayWd) ?? null
   const isClassToday = todaySlotRaw !== null
 
-  // Build planning data
   let planning: GroupPlanningData | null = null
   if (rawPlanning) {
     const log = latestLog(rawPlanning.planning_project_log ?? [])
@@ -358,10 +349,8 @@ export async function getGroupDetail(
     }
   }
 
-  // Step 2: parallel — closest session + recent history
   const planningId = planning?.planningId ?? null
 
-  // Oldest non-completed session — teacher works through backlog in chronological order
   async function fetchClosestSession(pid: string): Promise<RawTodaySession | null> {
     const sel = `id, session_date, status, traffic_light, teacher_comment, is_consolidated, project_id,
       session_attendances(student_id, attended), projects(name)`
@@ -409,17 +398,17 @@ export async function getGroupDetail(
       }
     : null
 
-  const recentSessions: SessionHistoryItem[] = ((historyResult.data ?? []) as unknown as RawHistorySession[]).map(
-    (s) => ({
-      sessionId: s.id,
-      sessionDate: s.session_date,
-      status: s.status as SessionStatus,
-      trafficLight: s.traffic_light as TrafficLight | null,
-      teacherComment: s.teacher_comment,
-      isConsolidated: s.is_consolidated,
-      projectName: s.projects?.name ?? null,
-    })
-  )
+  const recentSessions: SessionHistoryItem[] = (
+    (historyResult.data ?? []) as unknown as RawHistorySession[]
+  ).map((s) => ({
+    sessionId: s.id,
+    sessionDate: s.session_date,
+    status: s.status as SessionStatus,
+    trafficLight: s.traffic_light as TrafficLight | null,
+    teacherComment: s.teacher_comment,
+    isConsolidated: s.is_consolidated,
+    projectName: s.projects?.name ?? null,
+  }))
 
   return {
     groupId: g.id,
@@ -433,4 +422,91 @@ export async function getGroupDetail(
     todaySlot: todaySlotRaw,
     recentSessions,
   }
+}
+
+// ─── getGroupDetail ────────────────────────────────────────────────────────
+
+export async function getGroupDetail(
+  groupId: string,
+  workerId: string
+): Promise<GroupDetail | null> {
+  const supabase = await createClient()
+
+  const { data: assignment, error: aErr } = await supabase
+    .from('group_assignments')
+    .select(`group_id, end_date, groups(${GROUP_FIELDS_SELECT})`)
+    .eq('worker_id', workerId)
+    .eq('group_id', groupId)
+    .is('end_date', null)
+    .maybeSingle()
+
+  if (aErr || !assignment?.groups) return null
+  return buildGroupDetail(assignment.groups as unknown as RawGroup)
+}
+
+// ─── getGroupDetailForAnyWorker ───────────────────────────────────────────
+
+export async function getGroupDetailForAnyWorker(
+  groupId: string,
+  _workerId: string
+): Promise<GroupDetail | null> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('groups')
+    .select(GROUP_FIELDS_SELECT)
+    .eq('id', groupId)
+    .maybeSingle()
+
+  if (error || !data) return null
+  return buildGroupDetail(data as unknown as RawGroup)
+}
+
+// ─── getAllGroupsForTeacher ────────────────────────────────────
+
+export interface SchoolWithGroups {
+  schoolId: string
+  schoolName: string
+  groups: { groupId: string; groupName: string; schedule: ScheduleSlot[] }[]
+}
+
+export async function getAllGroupsForTeacher(): Promise<SchoolWithGroups[]> {
+  const supabase = createPublicClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+
+  type RawSchool = {
+    id: string
+    name: string
+    groups: {
+      id: string
+      name: string
+      group_schedule: { weekday: number; start_time: string; end_time: string }[]
+    }[]
+  }
+
+  const { data, error } = await supabase
+    .from('schools')
+    .select('id, name, groups(id, name, group_schedule(weekday, start_time, end_time))')
+    .eq('is_active', true)
+    .order('name')
+
+  if (error) throw new Error(error.message)
+
+  return ((data ?? []) as unknown as RawSchool[]).map((school) => ({
+    schoolId: school.id,
+    schoolName: school.name,
+    groups: (school.groups ?? [])
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((g) => ({
+        groupId: g.id,
+        groupName: g.name,
+        schedule: (g.group_schedule ?? []).map((s) => ({
+          weekday: s.weekday,
+          startTime: s.start_time,
+          endTime: s.end_time,
+        })),
+      })),
+  }))
 }

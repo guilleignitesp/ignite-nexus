@@ -1,13 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { ChevronDown, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import type { School } from '@/lib/data/schools'
 import type { SchoolYear } from '@/lib/data/settings'
+import type { Team } from '@/lib/data/teachers'
+import { updateSchoolTeam } from '@/lib/actions/schools'
 import { AddSchoolDialog } from './AddSchoolDialog'
 import { AddGroupDialog } from './AddGroupDialog'
 
@@ -15,6 +18,7 @@ interface SchoolsListProps {
   schools: School[]
   schoolYears: SchoolYear[]
   locale: string
+  teams: Team[]
 }
 
 const WEEKDAY_SHORT: Record<number, string> = {
@@ -33,11 +37,20 @@ function formatSchedule(
     .join(', ')
 }
 
-export function SchoolsList({ schools, schoolYears, locale }: SchoolsListProps) {
+export function SchoolsList({ schools, schoolYears, locale, teams }: SchoolsListProps) {
   const t = useTranslations('schools')
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [addGroupOpen, setAddGroupOpen] = useState(false)
   const [addGroupSchoolId, setAddGroupSchoolId] = useState('')
+
+  function handleTeamChange(schoolId: string, teamId: string) {
+    startTransition(async () => {
+      await updateSchoolTeam(schoolId, teamId === '' ? null : teamId)
+      router.refresh()
+    })
+  }
 
   function toggleExpanded(id: string) {
     setExpandedIds((prev) => {
@@ -93,11 +106,23 @@ export function SchoolsList({ schools, schoolYears, locale }: SchoolsListProps) 
                     )}
                   />
                   <span className="flex-1 font-medium">{school.name}</span>
+                  <select
+                    value={school.teamId ?? ''}
+                    disabled={isPending}
+                    onChange={(e) => handleTeamChange(school.id, e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="h-7 rounded-md border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring disabled:opacity-50"
+                  >
+                    <option value="">Sin equipo</option>
+                    {teams.map((t) => (
+                      <option key={t.id} value={t.id}>{t.code} · {t.name}</option>
+                    ))}
+                  </select>
                   <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                    {t('groupsBadge', { count: school.groups.length })}
+                    {school.groups.length} grupos
                   </span>
                   <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                    {t('studentsBadge', { count: school.student_count })}
+                    {school.student_count} alumnos
                   </span>
                   <Button
                     size="sm"

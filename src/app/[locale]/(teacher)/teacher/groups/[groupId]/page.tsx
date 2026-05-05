@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import Link from 'next/link'
 import { requireWorker } from '@/lib/auth'
-import { getGroupDetail } from '@/lib/data/teacher'
+import { getGroupDetailForAnyWorker } from '@/lib/data/teacher'
 import { Button } from '@/components/ui/button'
 import { TodaySessionSection } from '@/components/teacher/group/TodaySessionSection'
 import { SessionHistoryList } from '@/components/teacher/group/SessionHistoryList'
@@ -27,7 +27,7 @@ export default async function TeacherGroupPage({
 
   const [t, detail] = await Promise.all([
     getTranslations('teacherGroup'),
-    getGroupDetail(groupId, profile.workerId!),
+    getGroupDetailForAnyWorker(groupId, profile.workerId!),
   ])
 
   if (!detail) notFound()
@@ -44,7 +44,7 @@ export default async function TeacherGroupPage({
 
   const scheduleText = detail.schedule.length > 0
     ? detail.schedule
-        .map((s) => `${WEEKDAY[s.weekday] ?? s.weekday} ${formatTime(s.startTime)}–${formatTime(s.endTime)}`)
+        .map((s: { weekday: number; startTime: string; endTime: string }) => `${WEEKDAY[s.weekday] ?? s.weekday} ${formatTime(s.startTime)}–${formatTime(s.endTime)}`)
         .join(', ')
     : t('noSchedule')
 

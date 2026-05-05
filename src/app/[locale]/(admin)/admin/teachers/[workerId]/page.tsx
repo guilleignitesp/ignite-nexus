@@ -2,10 +2,11 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { requireAdmin } from '@/lib/auth'
-import { getWorkerProfile } from '@/lib/data/teachers'
+import { getWorkerProfile, getWorkerTeams, getTeams } from '@/lib/data/teachers'
 import { getWorkerEmail } from '@/lib/actions/teachers'
 import { PermissionsGrid } from '@/components/admin/teachers/PermissionsGrid'
 import { TeacherProfileActions } from '@/components/admin/teachers/TeacherProfileActions'
+import { TeamsSection } from '@/components/admin/teachers/TeamsSection'
 
 export default async function TeacherProfilePage({
   params,
@@ -18,10 +19,12 @@ export default async function TeacherProfilePage({
   const canManageTeachers =
     currentUser.isSuperAdmin || currentUser.adminModules.includes('teachers')
 
-  const [t, worker, workerEmail] = await Promise.all([
+  const [t, worker, workerEmail, workerTeams, allTeams] = await Promise.all([
     getTranslations('teachers'),
     getWorkerProfile(workerId),
     canManageTeachers ? getWorkerEmail(workerId).catch(() => null) : Promise.resolve(null),
+    getWorkerTeams(workerId),
+    getTeams(),
   ])
 
   if (!worker) notFound()
@@ -114,6 +117,19 @@ export default async function TeacherProfilePage({
           </div>
         )}
       </section>
+
+      {/* Teams */}
+      {canManageTeachers && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">Equipos</h2>
+          <TeamsSection
+            workerId={workerId}
+            initialTeams={workerTeams}
+            allTeams={allTeams}
+            isSuperAdmin={currentUser.isSuperAdmin}
+          />
+        </section>
+      )}
 
       {/* Admin permissions — only for superadmin */}
       {currentUser.isSuperAdmin && (
