@@ -69,6 +69,8 @@ export interface MapNode {
 export interface MapEdge {
   fromProjectId: string
   toProjectId: string
+  percentage: number | null
+  label: string | null
 }
 
 export interface GroupPlanningData {
@@ -81,7 +83,7 @@ export interface GroupPlanningData {
   mapNodes: MapNode[]
   mapEdges: MapEdge[]
   /** Projetos sucesores del proyecto actual en el mapa (aristas salientes) */
-  successors: { projectId: string; projectName: string }[]
+  successors: { projectId: string; projectName: string; percentage: number | null; label: string | null }[]
 }
 
 export interface GroupDetail {
@@ -121,7 +123,7 @@ type RawMapNode = {
   projects: { id: string; name: string; material_type: string | null } | null
 }
 
-type RawMapEdge = { from_project_id: string; to_project_id: string }
+type RawMapEdge = { from_project_id: string; to_project_id: string; percentage: number | null; label: string | null }
 
 type RawMap = {
   id: string
@@ -286,7 +288,7 @@ const GROUP_FIELDS_SELECT = `
     project_maps(
       id, initial_project_id,
       project_map_nodes(project_id, projects(id, name, material_type)),
-      project_map_edges(from_project_id, to_project_id)
+      project_map_edges(from_project_id, to_project_id, percentage, label)
     )
   )
 `
@@ -328,15 +330,17 @@ async function buildGroupDetail(g: RawGroup): Promise<GroupDetail> {
     const edges: MapEdge[] = (rawMap?.project_map_edges ?? []).map((e) => ({
       fromProjectId: e.from_project_id,
       toProjectId: e.to_project_id,
+      percentage: e.percentage ?? null,
+      label: e.label ?? null,
     }))
     const successors = log
       ? edges
           .filter((e) => e.fromProjectId === log.project_id)
           .map((e) => {
             const node = nodes.find((n) => n.projectId === e.toProjectId)
-            return node ? { projectId: node.projectId, projectName: node.projectName } : null
+            return node ? { projectId: node.projectId, projectName: node.projectName, percentage: e.percentage, label: e.label } : null
           })
-          .filter((x): x is { projectId: string; projectName: string } => x !== null)
+          .filter((x): x is { projectId: string; projectName: string; percentage: number | null; label: string | null } => x !== null)
       : []
 
     planning = {
@@ -411,9 +415,9 @@ async function buildGroupDetail(g: RawGroup): Promise<GroupDetail> {
       .filter((e) => e.fromProjectId === effectiveProjectId)
       .map((e) => {
         const node = planning!.mapNodes.find((n) => n.projectId === e.toProjectId)
-        return node ? { projectId: node.projectId, projectName: node.projectName } : null
+        return node ? { projectId: node.projectId, projectName: node.projectName, percentage: e.percentage, label: e.label } : null
       })
-      .filter((x): x is { projectId: string; projectName: string } => x !== null)
+      .filter((x): x is { projectId: string; projectName: string; percentage: number | null; label: string | null } => x !== null)
     planning = { ...planning, successors: newSuccessors }
   }
 

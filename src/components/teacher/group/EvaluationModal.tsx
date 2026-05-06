@@ -36,7 +36,7 @@ interface EvaluationModalProps {
   open: boolean
   onClose: () => void
   onCompleted: (nextProjectId: string | null) => void
-  successors: { projectId: string; projectName: string }[]
+  successors: { projectId: string; projectName: string; percentage: number | null; label: string | null }[]
   isEditMode?: boolean
   existingEvals?: { studentId: string; skills: { skillId: string; xpAwarded: number }[] }[]
   preloadedStudents?: { studentId: string; firstName: string; lastName: string }[]
@@ -243,25 +243,56 @@ export function EvaluationModal({
 
         {/* Next project — hidden in edit mode */}
         {!isEditMode && (
-          <div className="space-y-1.5 border-t pt-3">
-            <label className="text-sm font-medium">Siguiente proyecto</label>
-            {successors.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No hay proyectos sucesores disponibles.</p>
-            ) : (
-              <select
-                value={nextProjectId}
-                onChange={(e) => setNextProjectId(e.target.value)}
+          <div className="space-y-2 border-t pt-3">
+            <p className="text-sm font-medium">Siguiente proyecto</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <button
+                type="button"
                 disabled={isSubmitting}
-                className="w-full h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                onClick={() => setNextProjectId('')}
+                className={`rounded-md border p-3 text-left text-sm transition-colors cursor-pointer ${
+                  nextProjectId === ''
+                    ? 'border-primary bg-primary/5'
+                    : 'border-input hover:bg-muted/40'
+                }`}
               >
-                <option value="">Sin proyecto siguiente</option>
-                {successors.map((s) => (
-                  <option key={s.projectId} value={s.projectId}>
-                    {s.projectName}
-                  </option>
-                ))}
-              </select>
-            )}
+                <span className="font-medium text-muted-foreground">Sin proyecto siguiente</span>
+              </button>
+              {successors.map((s) => {
+                const selected = nextProjectId === s.projectId
+                return (
+                  <button
+                    key={s.projectId}
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() => setNextProjectId(selected ? '' : s.projectId)}
+                    className={`rounded-md border p-3 text-left text-sm transition-colors cursor-pointer space-y-1.5 ${
+                      selected ? 'border-primary bg-primary/5' : 'border-input hover:bg-muted/40'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="font-medium leading-tight">{s.projectName}</span>
+                      {s.label && (
+                        <span className="shrink-0 rounded px-1.5 py-0.5 text-xs bg-muted text-muted-foreground">
+                          {s.label}
+                        </span>
+                      )}
+                    </div>
+                    {s.percentage != null && (
+                      <div className="space-y-0.5">
+                        <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-primary transition-all"
+                            style={{ width: `${Math.min(100, s.percentage)}%` }}
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">{s.percentage}%</p>
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
           </div>
         )}
 

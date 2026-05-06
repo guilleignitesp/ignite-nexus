@@ -19,7 +19,7 @@ interface TodaySessionSectionProps {
   session: TodaySession | null
   sessionDate: string | null
   nextSessionDate: string | null
-  successors: { projectId: string; projectName: string }[]
+  successors: { projectId: string; projectName: string; percentage: number | null; label: string | null }[]
   groupSchedule: ScheduleSlot[]
 }
 

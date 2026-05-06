@@ -28,7 +28,7 @@ interface ActiveSessionFormProps {
   planningId: string
   session: TodaySession
   students: EnrolledStudent[]
-  successors: { projectId: string; projectName: string }[]
+  successors: { projectId: string; projectName: string; percentage: number | null; label: string | null }[]
   currentProjectId: string | null
   currentProjectName: string | null
 }

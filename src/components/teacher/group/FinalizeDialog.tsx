@@ -16,7 +16,7 @@ import type { TrafficLight } from '@/lib/data/teacher'
 import { EvaluationModal } from './EvaluationModal'
 
 interface FinalizeDialogProps {
-  successors: { projectId: string; projectName: string }[]
+  successors: { projectId: string; projectName: string; percentage: number | null; label: string | null }[]
   onConfirm: (args: {
     trafficLight: TrafficLight
     projectCompleted: boolean

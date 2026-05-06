@@ -8,6 +8,7 @@ import { TodaySessionSection } from '@/components/teacher/group/TodaySessionSect
 import { SessionHistoryList } from '@/components/teacher/group/SessionHistoryList'
 import { ProjectMapReadOnly } from '@/components/teacher/group/ProjectMapReadOnly'
 import { AttendanceHistorySection } from '@/components/teacher/group/AttendanceHistorySection'
+import { AttitudeButton } from '@/components/teacher/group/AttitudeButton'
 
 const WEEKDAY: Record<number, string> = {
   1: 'Lun', 2: 'Mar', 3: 'Mié', 4: 'Jue', 5: 'Vie',
@@ -73,6 +74,10 @@ export default async function TeacherGroupPage({
             {t('students', { count: detail.students.length })}
           </p>
         </div>
+        <AttitudeButton
+          students={detail.students}
+          sessionId={detail.closestSession?.sessionId}
+        />
       </div>
 
       {/* Sección 1: Sesión de hoy */}

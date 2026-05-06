@@ -697,3 +697,55 @@ export async function getSessionAttendances(
     }))
     .sort((a, b) => a.lastName.localeCompare(b.lastName))
 }
+
+// ─── getAttitudeActions ───────────────────────────────────────────────────
+
+export async function getAttitudeActions(): Promise<{
+  id: string; name_es: string; xp_value: number; description: string | null
+}[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('attitude_actions')
+    .select('id, name_es, xp_value, description')
+    .eq('is_active', true)
+    .order('xp_value', { ascending: false })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as { id: string; name_es: string; xp_value: number; description: string | null }[]
+}
+
+// ─── recordAttitudeAction ─────────────────────────────────────────────────
+
+export async function recordAttitudeAction(input: {
+  studentId: string
+  actionId: string
+  xpAwarded: number
+  sessionId?: string
+}): Promise<{ newTotalXp: number; previousTotalXp: number }> {
+  const profile = await getUserProfile()
+  if (!profile?.workerId) throw new Error('Unauthorized')
+
+  const supabase = await createClient()
+
+  const [xpResult, attitudeResult] = await Promise.all([
+    supabase.from('student_xp').select('total_xp').eq('student_id', input.studentId),
+    supabase.from('attitude_logs').select('xp_awarded').eq('student_id', input.studentId),
+  ])
+
+  const prevSkillXp = ((xpResult.data ?? []) as { total_xp: number }[])
+    .reduce((sum, r) => sum + (r.total_xp ?? 0), 0)
+  const prevAttitudeXp = ((attitudeResult.data ?? []) as { xp_awarded: number }[])
+    .reduce((sum, r) => sum + (r.xp_awarded ?? 0), 0)
+  const previousTotalXp = prevSkillXp + prevAttitudeXp
+
+  const { error: insertErr } = await supabase.from('attitude_logs').insert({
+    session_id: input.sessionId ?? null,
+    student_id: input.studentId,
+    worker_id: profile.workerId,
+    action_id: input.actionId,
+    xp_awarded: input.xpAwarded,
+    recorded_at: new Date().toISOString(),
+  })
+  if (insertErr) throw new Error(insertErr.message)
+
+  return { previousTotalXp, newTotalXp: previousTotalXp + input.xpAwarded }
+}
