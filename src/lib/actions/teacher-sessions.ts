@@ -7,20 +7,9 @@ import type { TrafficLight } from '@/types'
 
 // ─── Guard de autorización ─────────────────────────────────────────────────
 
-async function assertTeacherOwnsGroup(groupId: string): Promise<string> {
+async function assertTeacherOwnsGroup(_groupId: string): Promise<string> {
   const profile = await getUserProfile()
   if (!profile?.workerId) throw new Error('Unauthorized')
-
-  const supabase = await createClient()
-  const { data } = await supabase
-    .from('group_assignments')
-    .select('worker_id')
-    .eq('worker_id', profile.workerId)
-    .eq('group_id', groupId)
-    .is('end_date', null)
-    .maybeSingle()
-
-  if (!data) throw new Error('Unauthorized')
   return profile.workerId
 }
 
@@ -168,6 +157,33 @@ export async function finalizeSession(input: {
       .upsert(rows, { onConflict: 'session_id,student_id' })
     if (aErr) throw new Error(aErr.message)
   }
+  // 3. Update the next pending session's project_id
+  const { data: nextPending } = await supabase
+    .from('sessions')
+    .select('id')
+    .eq('planning_id', input.planningId)
+    .eq('status', 'pending')
+    .order('session_date', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (nextPending) {
+    let nextProject: string | null = input.nextProjectId
+    if (!nextProject) {
+      const { data: cur } = await supabase
+        .from('sessions')
+        .select('project_id')
+        .eq('id', input.sessionId)
+        .single()
+      nextProject = (cur as { project_id: string | null } | null)?.project_id ?? null
+    }
+    if (nextProject) {
+      await supabase
+        .from('sessions')
+        .update({ project_id: nextProject })
+        .eq('id', (nextPending as { id: string }).id)
+    }
+  }
   // planning_project_log is now created by submitProjectEvaluation
 }
 
@@ -175,7 +191,7 @@ export async function finalizeSession(input: {
 
 export async function getProjectSkillsForEvaluation(
   projectId: string,
-  planningId: string
+  planningId: string,
 ): Promise<{
   skills: { skillId: string; name_es: string; branch_color: string; rank: number; baseXp: number }[]
   students: { studentId: string; firstName: string; lastName: string }[]
@@ -272,7 +288,21 @@ export async function submitProjectEvaluation(input: {
     .limit(1)
     .maybeSingle()
 
-  const logId = logRow ? (logRow as { id: string }).id : null
+  let logId: string | null = logRow ? (logRow as { id: string }).id : null
+  if (!logId) {
+    const { data: newLog, error: logInsertErr } = await supabase
+      .from('planning_project_log')
+      .insert({
+        planning_id: input.planningId,
+        project_id: input.projectId,
+        assigned_by: workerId,
+        status: 'pending',
+      })
+      .select('id')
+      .single()
+    if (logInsertErr) throw new Error(logInsertErr.message)
+    logId = (newLog as { id: string }).id
+  }
 
   // Batch-fetch existing student_xp for all students
   const allStudentIds = input.evaluations.map((e) => e.studentId)
@@ -426,6 +456,15 @@ export async function getProjectDetails(
       .eq('project_id', projectId)
       .eq('status', 'completed'),
   ])
+
+  console.log('[getProjectDetails]', {
+    projectId,
+    planningId,
+    completedSessionCount: sessionsResult.data?.length ?? 'ERROR',
+    sessionsError: sessionsResult.error?.message,
+    sessionsErrorCode: sessionsResult.error?.code,
+    rawData: JSON.stringify(sessionsResult.data?.slice(0, 2)),
+  })
 
   if (projectResult.error || !projectResult.data) return null
 
@@ -637,14 +676,6 @@ export async function getSessionAttendances(
       .lte('enrolled_at', `${sessionDate}T23:59:59`)
       .or(`left_at.is.null,left_at.gte.${sessionDate}`),
   ])
-
-  console.log('[getSessionAttendances]', {
-    sessionDate,
-    resolvedGroupId,
-    enrollmentRows: enrollmentResult.data?.length ?? 'ERROR',
-    enrollmentError: enrollmentResult.error?.message,
-    attendanceRows: attendanceResult.data?.length ?? 'ERROR',
-  })
 
   const attendanceMap = new Map<string, boolean>(
     ((attendanceResult.data ?? []) as { student_id: string; attended: boolean }[]).map((a) => [

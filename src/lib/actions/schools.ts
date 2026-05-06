@@ -329,6 +329,67 @@ export async function createGroupPlanning(
   updateTag('schools')
 }
 
+export async function getSessionEvaluationForAdmin(
+  sessionId: string,
+): Promise<{
+  projectId: string
+  planningId: string
+  hasEvaluation: boolean
+  existingEvals: { studentId: string; skills: { skillId: string; xpAwarded: number }[] }[]
+}> {
+  await assertSchoolsAccess()
+  const supabase = await createClient()
+
+  const { data: sessionRow, error: sessErr } = await supabase
+    .from('sessions')
+    .select('project_id, planning_id')
+    .eq('id', sessionId)
+    .single()
+
+  if (sessErr || !sessionRow) throw new Error(sessErr?.message ?? 'Session not found')
+
+  type SessionInfo = { project_id: string | null; planning_id: string }
+  const { project_id: projectId, planning_id: planningId } = sessionRow as unknown as SessionInfo
+
+  if (!projectId) return { projectId: '', planningId, hasEvaluation: false, existingEvals: [] }
+
+  const { data: logRow } = await supabase
+    .from('planning_project_log')
+    .select('id')
+    .eq('planning_id', planningId)
+    .eq('project_id', projectId)
+    .order('assigned_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (!logRow) return { projectId, planningId, hasEvaluation: false, existingEvals: [] }
+
+  const logId = (logRow as { id: string }).id
+
+  const { data: evalsData } = await supabase
+    .from('project_evaluations')
+    .select('student_id, skill_evaluations(skill_id, xp_awarded)')
+    .eq('planning_project_log_id', logId)
+
+  type EvalRow = { student_id: string; skill_evaluations: { skill_id: string; xp_awarded: number }[] }
+  const evals = (evalsData ?? []) as unknown as EvalRow[]
+
+  if (evals.length === 0) return { projectId, planningId, hasEvaluation: false, existingEvals: [] }
+
+  return {
+    projectId,
+    planningId,
+    hasEvaluation: true,
+    existingEvals: evals.map((e) => ({
+      studentId: e.student_id,
+      skills: (e.skill_evaluations ?? []).map((se) => ({
+        skillId: se.skill_id,
+        xpAwarded: se.xp_awarded,
+      })),
+    })),
+  }
+}
+
 export async function getSessionAttendancesForAdmin(
   sessionId: string,
 ): Promise<{ studentId: string; firstName: string; lastName: string; attended: boolean }[]> {

@@ -39,6 +39,7 @@ interface EvaluationModalProps {
   successors: { projectId: string; projectName: string }[]
   isEditMode?: boolean
   existingEvals?: { studentId: string; skills: { skillId: string; xpAwarded: number }[] }[]
+  preloadedStudents?: { studentId: string; firstName: string; lastName: string }[]
 }
 
 const MIN_PCT = 30
@@ -56,6 +57,7 @@ export function EvaluationModal({
   successors,
   isEditMode = false,
   existingEvals,
+  preloadedStudents,
 }: EvaluationModalProps) {
   const [skills, setSkills] = useState<SkillInfo[]>([])
   const [students, setStudents] = useState<StudentInfo[]>([])
@@ -73,9 +75,15 @@ export function EvaluationModal({
     getProjectSkillsForEvaluation(projectId, planningId)
       .then(({ skills: s, students: st }) => {
         setSkills(s)
-        setStudents(st)
+        const merged = new Map<string, { studentId: string; firstName: string; lastName: string }>()
+        for (const s of st) merged.set(s.studentId, s)
+        for (const s of (preloadedStudents ?? [])) {
+          if (!merged.has(s.studentId)) merged.set(s.studentId, s)
+        }
+        const resolved = [...merged.values()].sort((a, b) => a.lastName.localeCompare(b.lastName))
+        setStudents(resolved)
         const init: Record<string, number> = {}
-        for (const student of st) {
+        for (const student of resolved) {
           for (const skill of s) {
             const key = `${student.studentId}:${skill.skillId}`
             if (isEditMode && existingEvals && skill.baseXp > 0) {

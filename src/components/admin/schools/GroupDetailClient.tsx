@@ -33,9 +33,11 @@ import {
   deleteSession,
   getSessionAttendancesForAdmin,
   getGroupEnrollmentHistory,
+  getSessionEvaluationForAdmin,
 } from '@/lib/actions/schools'
 import { getGroupProjects, getGroupAuditLog, type ChangeLogEntry } from '@/lib/actions/sessions-dashboard'
 import type { GroupAdminDetail, GroupSession } from '@/lib/data/schools'
+import { EvaluationModal } from '@/components/teacher/group/EvaluationModal'
 
 const AUDIT_BADGE_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   substitute_add: 'default',
@@ -151,6 +153,24 @@ export function GroupDetailClient({ group }: Props) {
   const [deleteConfirm, setDeleteConfirm] = useState(false)
 
   const [error, setError] = useState<string | null>(null)
+
+  // Evaluation edit
+  type EvalState = { sessionId: string; projectId: string; existingEvals: { studentId: string; skills: { skillId: string; xpAwarded: number }[] }[] }
+  const [evalState, setEvalState] = useState<EvalState | null>(null)
+  const [evalLoadingId, setEvalLoadingId] = useState<string | null>(null)
+
+  async function handleEditEval(session: GroupSession) {
+    if (!session.projectId) return
+    setEvalLoadingId(session.id)
+    try {
+      const result = await getSessionEvaluationForAdmin(session.id)
+      if (result.hasEvaluation) {
+        setEvalState({ sessionId: session.id, projectId: result.projectId, existingEvals: result.existingEvals })
+      }
+    } finally {
+      setEvalLoadingId(null)
+    }
+  }
 
   function resetDialog() {
     setFirstName('')
@@ -460,7 +480,11 @@ export function GroupDetailClient({ group }: Props) {
               </thead>
               <tbody>
                 {group.sessions.map((session) => (
-                  <tr key={session.id} className="border-b last:border-0">
+                  <tr
+                    key={session.id}
+                    className="border-b last:border-0"
+                    style={session.hasEvaluation ? { borderLeft: '3px solid var(--primary)' } : undefined}
+                  >
                     <td className="py-2 pr-4 tabular-nums">{session.date}</td>
                     <td className="py-2 pr-4 tabular-nums text-muted-foreground">
                       {session.startTime.slice(0, 5)}–{session.endTime.slice(0, 5)}
@@ -474,11 +498,26 @@ export function GroupDetailClient({ group }: Props) {
                     </td>
                     <td className="py-2 pr-4 text-muted-foreground">
                       {session.projectName ?? '—'}
+                      {session.hasEvaluation && (
+                        <span style={{ fontSize: '0.6rem', marginLeft: '0.375rem', padding: '0.1rem 0.375rem', borderRadius: '9999px', background: 'var(--primary)', color: 'var(--primary-foreground)', fontWeight: 600 }}>✓ Completado</span>
+                      )}
                     </td>
                     <td className="py-2">
-                      <Button size="xs" variant="outline" onClick={() => openEdit(session)}>
-                        Editar
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button size="xs" variant="outline" onClick={() => openEdit(session)}>
+                          Editar
+                        </Button>
+                        {session.status === 'completed' && session.hasEvaluation && (
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            disabled={evalLoadingId === session.id}
+                            onClick={() => handleEditEval(session)}
+                          >
+                            {evalLoadingId === session.id ? '...' : '⭐ Editar evaluación'}
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -893,6 +932,23 @@ export function GroupDetailClient({ group }: Props) {
           </form>
         </DialogContent>
       </Dialog>
+      {evalState && (
+        <EvaluationModal
+          open={true}
+          isEditMode={true}
+          projectId={evalState.projectId}
+          planningId={group.planningId ?? ''}
+          sessionId={evalState.sessionId}
+          groupId={group.id}
+          existingEvals={evalState.existingEvals}
+          successors={[]}
+          onClose={() => setEvalState(null)}
+          onCompleted={() => {
+            setEvalState(null)
+            router.refresh()
+          }}
+        />
+      )}
     </div>
   )
 }

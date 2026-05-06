@@ -27,6 +27,7 @@ interface FinalizeDialogProps {
   planningId: string
   groupId: string
   projectId: string | null
+  students: { studentId: string; firstName: string; lastName: string }[]
 }
 
 const TRAFFIC_OPTIONS: { value: TrafficLight; colorClass: string }[] = [
@@ -44,6 +45,7 @@ export function FinalizeDialog({
   planningId,
   groupId,
   projectId,
+  students,
 }: FinalizeDialogProps) {
   const t = useTranslations('teacherGroup')
   const [open, setOpen] = useState(false)
@@ -161,6 +163,7 @@ export function FinalizeDialog({
           sessionId={sessionId}
           groupId={groupId}
           successors={successors}
+          preloadedStudents={students}
         />
       )}
     </>

@@ -150,6 +150,7 @@ export interface GroupSession {
   trafficLight: string | null
   teacherComment: string | null
   attendances: { studentId: string; attended: boolean }[]
+  hasEvaluation: boolean
 }
 
 export interface GroupAdminDetail {
@@ -251,28 +252,46 @@ export async function getGroupAdminDetail(
   const planningIds = plannings.map((p) => p.id)
   let sessions: GroupSession[] = []
   if (planningIds.length > 0) {
-    const { data: sessionsData } = await supabase
-      .from('sessions')
-      .select('id, session_date, start_time, end_time, status, is_consolidated, traffic_light, teacher_comment, projects(id, name), session_attendances(student_id, attended)')
-      .in('planning_id', planningIds)
-      .order('session_date', { ascending: false })
-      .limit(50)
-    sessions = ((sessionsData ?? []) as unknown as RawGroupSession[]).map((s) => ({
-      id: s.id,
-      date: s.session_date,
-      startTime: s.start_time,
-      endTime: s.end_time,
-      status: s.status,
-      projectId: s.projects?.id ?? null,
-      projectName: s.projects?.name ?? null,
-      isConsolidated: s.is_consolidated ?? false,
-      trafficLight: s.traffic_light,
-      teacherComment: s.teacher_comment,
-      attendances: (s.session_attendances ?? []).map((a) => ({
-        studentId: a.student_id,
-        attended: a.attended,
-      })),
-    }))
+    const [sessionsResult, logsResult] = await Promise.all([
+      supabase
+        .from('sessions')
+        .select('id, session_date, start_time, end_time, status, is_consolidated, traffic_light, teacher_comment, projects(id, name), session_attendances(student_id, attended)')
+        .in('planning_id', planningIds)
+        .order('session_date', { ascending: false })
+        .limit(50),
+      supabase
+        .from('planning_project_log')
+        .select('project_id, project_evaluations(id)')
+        .in('planning_id', planningIds),
+    ])
+
+    type LogWithEval = { project_id: string; project_evaluations: { id: string }[] }
+    const projectsWithEvals = new Set<string>(
+      ((logsResult.data ?? []) as unknown as LogWithEval[])
+        .filter((l) => (l.project_evaluations?.length ?? 0) > 0)
+        .map((l) => l.project_id)
+    )
+
+    sessions = ((sessionsResult.data ?? []) as unknown as RawGroupSession[]).map((s) => {
+      const projectId = s.projects?.id ?? null
+      return {
+        id: s.id,
+        date: s.session_date,
+        startTime: s.start_time,
+        endTime: s.end_time,
+        status: s.status,
+        projectId,
+        projectName: s.projects?.name ?? null,
+        isConsolidated: s.is_consolidated ?? false,
+        trafficLight: s.traffic_light,
+        teacherComment: s.teacher_comment,
+        attendances: (s.session_attendances ?? []).map((a) => ({
+          studentId: a.student_id,
+          attended: a.attended,
+        })),
+        hasEvaluation: projectId !== null && projectsWithEvals.has(projectId),
+      }
+    })
   }
 
   const teachers = (raw.group_assignments ?? [])

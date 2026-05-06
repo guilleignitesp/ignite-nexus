@@ -239,12 +239,18 @@ export function SessionHistoryList({ sessions, groupId, planningId }: SessionHis
         <tbody>
           {closed.map((s) => (
             <Fragment key={s.sessionId}>
-              <tr className={cn('border-b', editingId === s.sessionId && 'bg-muted/20')}>
+              <tr
+                className={cn('border-b', editingId === s.sessionId && 'bg-muted/20')}
+                style={s.hasEvaluation ? { borderLeft: '3px solid var(--primary)' } : undefined}
+              >
                 <td className="px-4 py-3 tabular-nums whitespace-nowrap">
                   {new Date(s.sessionDate).toLocaleDateString()}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">
                   {s.projectName ?? '—'}
+                  {s.hasEvaluation && (
+                    <span style={{ fontSize: '0.6rem', marginLeft: '0.375rem', padding: '0.1rem 0.375rem', borderRadius: '9999px', background: 'var(--primary)', color: 'var(--primary-foreground)', fontWeight: 600 }}>✓ Completado</span>
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   <Badge
@@ -280,11 +286,11 @@ export function SessionHistoryList({ sessions, groupId, planningId }: SessionHis
                     {s.status === 'completed' && s.hasEvaluation && (
                       <Button
                         size="xs"
-                        variant="ghost"
+                        variant="outline"
                         disabled={evalLoadingId === s.sessionId}
                         onClick={() => handleEditEval(s)}
                       >
-                        {evalLoadingId === s.sessionId ? '...' : 'Editar evaluación'}
+                        {evalLoadingId === s.sessionId ? '...' : '⭐ Editar evaluación'}
                       </Button>
                     )}
                   </div>

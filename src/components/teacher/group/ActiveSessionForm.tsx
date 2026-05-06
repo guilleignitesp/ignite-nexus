@@ -118,7 +118,7 @@ export function ActiveSessionForm({
           projectCompleted,
           nextProjectId,
         })
-        router.refresh()
+        window.location.reload()
       } catch {
         setError(t('finalizeError'))
       }
@@ -271,6 +271,9 @@ export function ActiveSessionForm({
             planningId={planningId}
             groupId={groupId}
             projectId={currentProjectId}
+            students={students.filter(s =>
+              attendances.find(a => a.studentId === s.studentId)?.attended ?? true
+            )}
           />
         </div>
 
