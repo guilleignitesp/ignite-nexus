@@ -1162,7 +1162,7 @@ El titular de un elemento de stock puede ser una ubicación (`stock_locations`) 
 ### D11: Arquitectura del XP — dos fuentes separadas
 El XP de un alumno se origina en dos fuentes completamente separadas:
 - **XP académico** (`project_evaluations` → `skill_evaluations`): otorgado al finalizar un proyecto. Se acumula en `student_xp.academic_xp`.
-- **XP de actitud** (`attitude_logs`): otorgado (o penalizado) por acciones actitudinales. Se acumula en `student_xp.attitude_xp`.
+- **XP de actitud** (`attitude_logs`): otorgado (o penalizado) por acciones actitudinales. No se acumula en `student_xp`. El XP de actitud vive exclusivamente en `attitude_logs` y se suma en tiempo de consulta.
 
 `student_xp.total_xp = academic_xp + attitude_xp`. Para calcular el XP total actual de un alumno se debe sumar ambas fuentes; consultar solo `student_xp` no refleja el XP de actitud registrado entre actualizaciones del trigger (si este no está activo). La función `recordAttitudeAction` en `teacher-sessions.ts` calcula `previousTotalXp` sumando ambas tablas.
 
