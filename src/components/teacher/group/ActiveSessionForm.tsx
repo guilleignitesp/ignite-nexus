@@ -267,6 +267,10 @@ export function ActiveSessionForm({
             successors={successors}
             onConfirm={handleFinalize}
             isPending={isPending}
+            sessionId={session.sessionId}
+            planningId={planningId}
+            groupId={groupId}
+            projectId={currentProjectId}
           />
         </div>
 

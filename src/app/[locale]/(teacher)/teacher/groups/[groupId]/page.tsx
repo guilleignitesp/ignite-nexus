@@ -103,8 +103,8 @@ export default async function TeacherGroupPage({
         <h2 className="mb-3 text-lg font-semibold">{t('sessionHistoryTitle')}</h2>
         <SessionHistoryList
           sessions={detail.recentSessions}
-          students={detail.students}
           groupId={detail.groupId}
+          planningId={detail.planning?.planningId ?? ''}
         />
       </section>
 

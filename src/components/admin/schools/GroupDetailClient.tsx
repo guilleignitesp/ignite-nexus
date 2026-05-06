@@ -31,6 +31,8 @@ import {
   createAndEnrollStudent,
   adminUpdateSession,
   deleteSession,
+  getSessionAttendancesForAdmin,
+  getGroupEnrollmentHistory,
 } from '@/lib/actions/schools'
 import { getGroupProjects, getGroupAuditLog, type ChangeLogEntry } from '@/lib/actions/sessions-dashboard'
 import type { GroupAdminDetail, GroupSession } from '@/lib/data/schools'
@@ -98,6 +100,23 @@ export function GroupDetailClient({ group }: Props) {
     }
   }
 
+  // Enrollment history
+  const [enrollmentHistoryOpen, setEnrollmentHistoryOpen] = useState(false)
+  const [enrollmentHistory, setEnrollmentHistory] = useState<{ id: string; studentId: string; firstName: string; lastName: string; enrolledAt: string; leftAt: string | null; isActive: boolean }[]>([])
+  const [enrollmentHistoryLoading, setEnrollmentHistoryLoading] = useState(false)
+
+  async function loadEnrollmentHistory() {
+    setEnrollmentHistoryLoading(true)
+    try {
+      const data = await getGroupEnrollmentHistory(group.id)
+      setEnrollmentHistory(data)
+    } catch {
+      // ignore
+    } finally {
+      setEnrollmentHistoryLoading(false)
+    }
+  }
+
   // Add student dialog
   const [addStudentOpen, setAddStudentOpen] = useState(false)
   const [firstName, setFirstName] = useState('')
@@ -126,6 +145,7 @@ export function GroupDetailClient({ group }: Props) {
   const [editTrafficLight, setEditTrafficLight] = useState<string | null>(null)
   const [editComment, setEditComment] = useState('')
   const [editAttendances, setEditAttendances] = useState<Record<string, boolean>>({})
+  const [editStudents, setEditStudents] = useState<{ studentId: string; firstName: string; lastName: string }[]>([])
   const [editProjects, setEditProjects] = useState<{ id: string; name: string }[]>([])
   const [editSaving, setEditSaving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
@@ -227,15 +247,17 @@ export function GroupDetailClient({ group }: Props) {
     setEditProjectId(session.projectId)
     setEditTrafficLight(session.trafficLight)
     setEditComment(session.teacherComment ?? '')
-    const attMap: Record<string, boolean> = {}
-    for (const s of group.students) {
-      const found = session.attendances.find((a) => a.studentId === s.studentId)
-      attMap[s.studentId] = found ? found.attended : false
-    }
-    setEditAttendances(attMap)
+    setEditStudents([])
+    setEditAttendances({})
     setDeleteConfirm(false)
     setEditProjects([])
     getGroupProjects(group.id).then((ps) => setEditProjects(ps)).catch(() => {})
+    getSessionAttendancesForAdmin(session.id)
+      .then((result) => {
+        setEditStudents(result.map(({ studentId, firstName, lastName }) => ({ studentId, firstName, lastName })))
+        setEditAttendances(Object.fromEntries(result.map((s) => [s.studentId, s.attended])))
+      })
+      .catch(() => {})
   }
 
   async function handleSaveSession() {
@@ -249,7 +271,7 @@ export function GroupDetailClient({ group }: Props) {
         projectId: editProjectId,
         trafficLight: editTrafficLight,
         teacherComment: editComment.trim() || null,
-        attendances: group.students.map((s) => ({
+        attendances: editStudents.map((s) => ({
           studentId: s.studentId,
           attended: editAttendances[s.studentId] ?? false,
         })),
@@ -317,6 +339,14 @@ export function GroupDetailClient({ group }: Props) {
             <span className="text-sm text-muted-foreground">
               {t('studentCount', { count: group.students.length })}
             </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => { setEnrollmentHistoryOpen(true); loadEnrollmentHistory() }}
+            >
+              <History />
+              Movimientos de alumnos
+            </Button>
             <Button
               size="sm"
               variant="outline"
@@ -510,6 +540,45 @@ export function GroupDetailClient({ group }: Props) {
                 ))}
               </div>
             )}
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Enrollment history sheet */}
+      <Sheet open={enrollmentHistoryOpen} onOpenChange={(o) => { if (!o) setEnrollmentHistoryOpen(false) }}>
+        <SheetContent side="right" className="sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Movimientos de alumnos — {group.name}</SheetTitle>
+          </SheetHeader>
+          <div className="p-4 space-y-2">
+            {enrollmentHistoryLoading && (
+              <p className="text-sm text-muted-foreground text-center py-4">Cargando...</p>
+            )}
+            {!enrollmentHistoryLoading && enrollmentHistory.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">Sin movimientos registrados</p>
+            )}
+            {!enrollmentHistoryLoading && enrollmentHistory.map((row) => {
+              const fmtDate = (iso: string) => {
+                const d = new Date(iso)
+                return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+              }
+              return (
+                <div key={row.id} className="flex items-center justify-between rounded-md border px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium">{row.lastName}, {row.firstName}</p>
+                    <p className="text-xs text-muted-foreground">Alta: {fmtDate(row.enrolledAt)}</p>
+                    {row.leftAt && (
+                      <p className="text-xs text-muted-foreground">Baja: {fmtDate(row.leftAt)}</p>
+                    )}
+                  </div>
+                  {row.isActive ? (
+                    <Badge variant="default" className="bg-green-600 hover:bg-green-600">Alta</Badge>
+                  ) : (
+                    <Badge variant="destructive">Baja</Badge>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </SheetContent>
       </Sheet>
@@ -709,11 +778,11 @@ export function GroupDetailClient({ group }: Props) {
                 </div>
 
                 {/* Attendance */}
-                {group.students.length > 0 && (
+                {editStudents.length > 0 && (
                   <div className="space-y-1.5">
                     <Label>Asistencia</Label>
                     <div className="space-y-1 rounded-md border p-2">
-                      {group.students.map((s) => (
+                      {editStudents.map((s) => (
                         <label key={s.studentId} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 hover:bg-muted/50">
                           <input
                             type="checkbox"

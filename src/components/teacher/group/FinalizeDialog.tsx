@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useTranslations } from 'next-intl'
 import {
   Dialog,
@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { TrafficLight } from '@/lib/data/teacher'
+import { EvaluationModal } from './EvaluationModal'
 
 interface FinalizeDialogProps {
   successors: { projectId: string; projectName: string }[]
@@ -22,6 +23,10 @@ interface FinalizeDialogProps {
     nextProjectId: string | null
   }) => void
   isPending: boolean
+  sessionId: string
+  planningId: string
+  groupId: string
+  projectId: string | null
 }
 
 const TRAFFIC_OPTIONS: { value: TrafficLight; colorClass: string }[] = [
@@ -31,12 +36,21 @@ const TRAFFIC_OPTIONS: { value: TrafficLight; colorClass: string }[] = [
   { value: 'red',    colorClass: 'bg-red-500 hover:bg-red-600' },
 ]
 
-export function FinalizeDialog({ successors, onConfirm, isPending }: FinalizeDialogProps) {
+export function FinalizeDialog({
+  successors,
+  onConfirm,
+  isPending,
+  sessionId,
+  planningId,
+  groupId,
+  projectId,
+}: FinalizeDialogProps) {
   const t = useTranslations('teacherGroup')
   const [open, setOpen] = useState(false)
   const [traffic, setTraffic] = useState<TrafficLight | null>(null)
   const [projectDone, setProjectDone] = useState(false)
-  const [nextProjectId, setNextProjectId] = useState('')
+  const [evalOpen, setEvalOpen] = useState(false)
+  const goingToEval = useRef(false)
 
   const trafficLabels: Record<TrafficLight, string> = {
     green:  t('trafficGreen'),
@@ -47,108 +61,108 @@ export function FinalizeDialog({ successors, onConfirm, isPending }: FinalizeDia
 
   function handleConfirm() {
     if (!traffic) return
-    onConfirm({
-      trafficLight: traffic,
-      projectCompleted: projectDone,
-      nextProjectId: projectDone && nextProjectId ? nextProjectId : null,
-    })
-    setOpen(false)
+    if (projectDone && projectId) {
+      goingToEval.current = true
+      setOpen(false)
+      setEvalOpen(true)
+    } else {
+      onConfirm({ trafficLight: traffic, projectCompleted: projectDone, nextProjectId: null })
+      setOpen(false)
+    }
   }
 
   function handleOpenChange(next: boolean) {
-    if (!next) {
-      // Reset state on close
+    if (!next && !goingToEval.current) {
       setTraffic(null)
       setProjectDone(false)
-      setNextProjectId('')
     }
+    if (!next) goingToEval.current = false
     setOpen(next)
   }
 
+  function handleEvalCompleted(nextProjectId: string | null) {
+    setEvalOpen(false)
+    onConfirm({ trafficLight: traffic!, projectCompleted: true, nextProjectId })
+    setTraffic(null)
+    setProjectDone(false)
+  }
+
+  function handleEvalClose() {
+    setEvalOpen(false)
+    setTraffic(null)
+    setProjectDone(false)
+  }
+
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger render={<Button variant="default" disabled={isPending} />}>
-        {t('finalize')}
-      </DialogTrigger>
+    <>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogTrigger render={<Button variant="default" disabled={isPending} />}>
+          {t('finalize')}
+        </DialogTrigger>
 
-      <DialogContent showCloseButton={false} className="space-y-5">
-        <DialogTitle>{t('finalizeTitle')}</DialogTitle>
+        <DialogContent showCloseButton={false} className="space-y-5">
+          <DialogTitle>{t('finalizeTitle')}</DialogTitle>
 
-        {/* Semáforo */}
-        <div className="space-y-2">
-          <p className="text-sm font-medium">{t('trafficLightLabel')}</p>
-          <div className="flex gap-2">
-            {TRAFFIC_OPTIONS.map(({ value, colorClass }) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setTraffic(value)}
-                title={trafficLabels[value]}
-                className={cn(
-                  'h-10 w-10 rounded-full transition-all',
-                  colorClass,
-                  traffic === value
-                    ? 'ring-2 ring-offset-2 ring-foreground scale-110'
-                    : 'opacity-60'
-                )}
-              />
-            ))}
+          {/* Semáforo */}
+          <div className="space-y-2">
+            <p className="text-sm font-medium">{t('trafficLightLabel')}</p>
+            <div className="flex gap-2">
+              {TRAFFIC_OPTIONS.map(({ value, colorClass }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setTraffic(value)}
+                  title={trafficLabels[value]}
+                  className={cn(
+                    'h-10 w-10 rounded-full transition-all',
+                    colorClass,
+                    traffic === value
+                      ? 'ring-2 ring-offset-2 ring-foreground scale-110'
+                      : 'opacity-60'
+                  )}
+                />
+              ))}
+            </div>
           </div>
-        </div>
 
-        {/* ¿Proyecto acabado? */}
-        <div className="flex items-center gap-3">
-          <input
-            type="checkbox"
-            id="project-done"
-            checked={projectDone}
-            onChange={(e) => {
-              setProjectDone(e.target.checked)
-              if (!e.target.checked) setNextProjectId('')
-            }}
-            className="h-4 w-4"
-          />
-          <label htmlFor="project-done" className="text-sm font-medium cursor-pointer">
-            {t('projectDoneLabel')}
-          </label>
-        </div>
-
-        {/* Selector siguiente proyecto */}
-        {projectDone && (
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">{t('nextProjectLabel')}</label>
-            {successors.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t('noSuccessors')}</p>
-            ) : (
-              <select
-                value={nextProjectId}
-                onChange={(e) => setNextProjectId(e.target.value)}
-                className="w-full h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-              >
-                <option value="">{t('nextProjectPlaceholder')}</option>
-                {successors.map((s) => (
-                  <option key={s.projectId} value={s.projectId}>
-                    {s.projectName}
-                  </option>
-                ))}
-              </select>
-            )}
+          {/* ¿Proyecto acabado? */}
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="project-done"
+              checked={projectDone}
+              onChange={(e) => setProjectDone(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <label htmlFor="project-done" className="text-sm font-medium cursor-pointer">
+              {t('projectDoneLabel')}
+            </label>
           </div>
-        )}
 
-        {/* Acciones */}
-        <DialogFooter>
-          <DialogClose render={<Button variant="outline" />}>
-            {t('cancelFinalize')}
-          </DialogClose>
-          <Button
-            onClick={handleConfirm}
-            disabled={!traffic || isPending}
-          >
-            {t('confirmFinalize')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          {/* Acciones */}
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" />}>
+              {t('cancelFinalize')}
+            </DialogClose>
+            <Button onClick={handleConfirm} disabled={!traffic || isPending}>
+              {projectDone && projectId ? 'Continuar a evaluación' : t('confirmFinalize')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {projectId && (
+        <EvaluationModal
+          open={evalOpen}
+          onClose={handleEvalClose}
+          onCompleted={handleEvalCompleted}
+          projectId={projectId}
+          planningId={planningId}
+          sessionId={sessionId}
+          groupId={groupId}
+          successors={successors}
+        />
+      )}
+    </>
   )
 }

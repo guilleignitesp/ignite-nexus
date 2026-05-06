@@ -328,3 +328,91 @@ export async function createGroupPlanning(
 
   updateTag('schools')
 }
+
+export async function getSessionAttendancesForAdmin(
+  sessionId: string,
+): Promise<{ studentId: string; firstName: string; lastName: string; attended: boolean }[]> {
+  await assertSchoolsAccess()
+  const supabase = await createClient()
+
+  const { data: sessInfo } = await supabase
+    .from('sessions')
+    .select('session_date, plannings(group_id)')
+    .eq('id', sessionId)
+    .single()
+
+  type SessInfo = { session_date: string; plannings: { group_id: string } | null }
+  const rawSessionDate = (sessInfo as unknown as SessInfo)?.session_date
+  const sessionDate = rawSessionDate ? rawSessionDate.slice(0, 10) : null
+  if (!sessionDate) throw new Error('Session not found')
+  const groupId = (sessInfo as unknown as SessInfo)?.plannings?.group_id
+  if (!groupId) throw new Error('Group not found')
+
+  const [attendanceResult, enrollmentResult] = await Promise.all([
+    supabase
+      .from('session_attendances')
+      .select('student_id, attended')
+      .eq('session_id', sessionId),
+    supabase
+      .from('group_enrollments')
+      .select('student_id, students(id, first_name, last_name)')
+      .eq('group_id', groupId)
+      .lte('enrolled_at', `${sessionDate}T23:59:59`)
+      .or(`left_at.is.null,left_at.gte.${sessionDate}`),
+  ])
+
+  const attendanceMap = new Map<string, boolean>(
+    ((attendanceResult.data ?? []) as { student_id: string; attended: boolean }[]).map((a) => [
+      a.student_id,
+      a.attended,
+    ])
+  )
+
+  return ((enrollmentResult.data ?? []) as unknown as {
+    student_id: string
+    students: { id: string; first_name: string; last_name: string } | null
+  }[])
+    .filter((r) => r.students)
+    .map((r) => ({
+      studentId: r.student_id,
+      firstName: r.students!.first_name,
+      lastName: r.students!.last_name,
+      attended: attendanceMap.get(r.student_id) ?? false,
+    }))
+    .sort((a, b) => a.lastName.localeCompare(b.lastName))
+}
+
+export async function getGroupEnrollmentHistory(
+  groupId: string,
+): Promise<{ id: string; studentId: string; firstName: string; lastName: string; enrolledAt: string; leftAt: string | null; isActive: boolean }[]> {
+  await assertSchoolsAccess()
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('group_enrollments')
+    .select('id, enrolled_at, left_at, is_active, students(id, first_name, last_name)')
+    .eq('group_id', groupId)
+    .order('enrolled_at', { ascending: false })
+
+  if (error) throw new Error(error.message)
+
+  type RawRow = {
+    id: string
+    enrolled_at: string
+    left_at: string | null
+    is_active: boolean
+    students: { id: string; first_name: string; last_name: string } | null
+  }
+
+  return ((data ?? []) as unknown as RawRow[])
+    .filter((r) => r.students)
+    .map((r) => ({
+      id: r.id,
+      studentId: r.students!.id,
+      firstName: r.students!.first_name,
+      lastName: r.students!.last_name,
+      enrolledAt: r.enrolled_at,
+      leftAt: r.left_at,
+      isActive: r.is_active,
+    }))
+}

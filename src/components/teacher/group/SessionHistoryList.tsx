@@ -7,9 +7,10 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
-import { saveSession, getSessionAttendances } from '@/lib/actions/teacher-sessions'
-import type { SessionHistoryItem, EnrolledStudent } from '@/lib/data/teacher'
+import { saveSession, getSessionAttendances, getSessionEvaluation } from '@/lib/actions/teacher-sessions'
+import type { SessionHistoryItem } from '@/lib/data/teacher'
 import type { TrafficLight } from '@/types'
+import { EvaluationModal } from './EvaluationModal'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -31,32 +32,23 @@ const TRAFFIC_OPTIONS: { value: TrafficLight; colorClass: string; hoverClass: st
 
 interface InlineEditPanelProps {
   session: SessionHistoryItem
-  students: EnrolledStudent[]
   groupId: string
   onClose: () => void
   onSaved: () => void
 }
 
-function InlineEditPanel({ session, students, groupId, onClose, onSaved }: InlineEditPanelProps) {
+function InlineEditPanel({ session, groupId, onClose, onSaved }: InlineEditPanelProps) {
   const t = useTranslations('teacherGroup')
   const [traffic, setTraffic] = useState<TrafficLight | null>(session.trafficLight)
   const [comment, setComment] = useState(session.teacherComment ?? '')
-  const [attendances, setAttendances] = useState<{ studentId: string; attended: boolean }[]>([])
+  const [attendances, setAttendances] = useState<{ studentId: string; firstName: string; lastName: string; attended: boolean }[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isSaving, startSave] = useTransition()
 
   useEffect(() => {
     getSessionAttendances(session.sessionId, groupId)
-      .then((data) => {
-        const map = new Map(data.map((a) => [a.studentId, a.attended]))
-        setAttendances(
-          students.map((s) => ({
-            studentId: s.studentId,
-            attended: map.get(s.studentId) ?? true,
-          }))
-        )
-      })
+      .then((data) => setAttendances(data))
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
@@ -132,27 +124,23 @@ function InlineEditPanel({ session, students, groupId, onClose, onSaved }: Inlin
           </div>
         ) : (
           <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
-            {attendances.map((a) => {
-              const stu = students.find((s) => s.studentId === a.studentId)
-              if (!stu) return null
-              return (
-                <label
-                  key={a.studentId}
-                  className="flex items-center gap-3 cursor-pointer rounded-md px-2 py-1 hover:bg-muted/40 select-none"
-                >
-                  <input
-                    type="checkbox"
-                    checked={a.attended}
-                    onChange={() => toggleAttendance(a.studentId)}
-                    disabled={isSaving}
-                    className="h-4 w-4 rounded"
-                  />
-                  <span className="text-sm">
-                    {stu.lastName}, {stu.firstName}
-                  </span>
-                </label>
-              )
-            })}
+            {attendances.map((a) => (
+              <label
+                key={a.studentId}
+                className="flex items-center gap-3 cursor-pointer rounded-md px-2 py-1 hover:bg-muted/40 select-none"
+              >
+                <input
+                  type="checkbox"
+                  checked={a.attended}
+                  onChange={() => toggleAttendance(a.studentId)}
+                  disabled={isSaving}
+                  className="h-4 w-4 rounded"
+                />
+                <span className="text-sm">
+                  {a.lastName}, {a.firstName}
+                </span>
+              </label>
+            ))}
           </div>
         )}
       </div>
@@ -175,14 +163,39 @@ function InlineEditPanel({ session, students, groupId, onClose, onSaved }: Inlin
 
 interface SessionHistoryListProps {
   sessions: SessionHistoryItem[]
-  students: EnrolledStudent[]
   groupId: string
+  planningId: string
 }
 
-export function SessionHistoryList({ sessions, students, groupId }: SessionHistoryListProps) {
+type EvalState = {
+  sessionId: string
+  projectId: string
+  existingEvals: { studentId: string; skills: { skillId: string; xpAwarded: number }[] }[]
+}
+
+export function SessionHistoryList({ sessions, groupId, planningId }: SessionHistoryListProps) {
   const t = useTranslations('teacherGroup')
   const router = useRouter()
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [evalState, setEvalState] = useState<EvalState | null>(null)
+  const [evalLoadingId, setEvalLoadingId] = useState<string | null>(null)
+
+  async function handleEditEval(session: SessionHistoryItem) {
+    if (!session.projectId) return
+    setEvalLoadingId(session.sessionId)
+    try {
+      const result = await getSessionEvaluation(session.sessionId, groupId)
+      if (result.hasEvaluation) {
+        setEvalState({
+          sessionId: session.sessionId,
+          projectId: result.projectId,
+          existingEvals: result.existingEvals,
+        })
+      }
+    } finally {
+      setEvalLoadingId(null)
+    }
+  }
 
   const CLOSED_STATUSES = new Set(['completed', 'unknown', 'excused'])
   const closed = sessions.filter((s) => CLOSED_STATUSES.has(s.status))
@@ -210,6 +223,7 @@ export function SessionHistoryList({ sessions, students, groupId }: SessionHisto
   }
 
   return (
+    <>
     <div className="rounded-lg border">
       <table className="w-full text-sm">
         <thead>
@@ -253,15 +267,27 @@ export function SessionHistoryList({ sessions, students, groupId }: SessionHisto
                   {s.teacherComment ?? '—'}
                 </td>
                 <td className="px-4 py-3">
-                  <Button
-                    size="xs"
-                    variant={editingId === s.sessionId ? 'secondary' : 'ghost'}
-                    onClick={() =>
-                      setEditingId(editingId === s.sessionId ? null : s.sessionId)
-                    }
-                  >
-                    {t('editSession')}
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="xs"
+                      variant={editingId === s.sessionId ? 'secondary' : 'ghost'}
+                      onClick={() =>
+                        setEditingId(editingId === s.sessionId ? null : s.sessionId)
+                      }
+                    >
+                      {t('editSession')}
+                    </Button>
+                    {s.status === 'completed' && s.hasEvaluation && (
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        disabled={evalLoadingId === s.sessionId}
+                        onClick={() => handleEditEval(s)}
+                      >
+                        {evalLoadingId === s.sessionId ? '...' : 'Editar evaluación'}
+                      </Button>
+                    )}
+                  </div>
                 </td>
               </tr>
               {editingId === s.sessionId && (
@@ -269,7 +295,6 @@ export function SessionHistoryList({ sessions, students, groupId }: SessionHisto
                   <td colSpan={6}>
                     <InlineEditPanel
                       session={s}
-                      students={students}
                       groupId={groupId}
                       onClose={() => setEditingId(null)}
                       onSaved={() => {
@@ -285,5 +310,24 @@ export function SessionHistoryList({ sessions, students, groupId }: SessionHisto
         </tbody>
       </table>
     </div>
+
+    {evalState && (
+      <EvaluationModal
+        open={true}
+        isEditMode={true}
+        projectId={evalState.projectId}
+        planningId={planningId}
+        sessionId={evalState.sessionId}
+        groupId={groupId}
+        existingEvals={evalState.existingEvals}
+        successors={[]}
+        onClose={() => setEvalState(null)}
+        onCompleted={() => {
+          setEvalState(null)
+          router.refresh()
+        }}
+      />
+    )}
+    </>
   )
 }

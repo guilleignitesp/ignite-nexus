@@ -56,6 +56,8 @@ export interface SessionHistoryItem {
   teacherComment: string | null
   isConsolidated: boolean
   projectName: string | null
+  projectId: string | null
+  hasEvaluation: boolean
 }
 
 export interface MapNode {
@@ -172,6 +174,7 @@ type RawHistorySession = {
   traffic_light: string | null
   teacher_comment: string | null
   is_consolidated: boolean
+  project_id: string | null
   projects: { name: string } | null
 }
 
@@ -365,21 +368,25 @@ async function buildGroupDetail(g: RawGroup): Promise<GroupDetail> {
     return data as unknown as RawTodaySession | null
   }
 
-  const [rawClosest, historyResult] = planningId
+  const [rawClosest, historyResult, logsResult] = planningId
     ? await Promise.all([
         fetchClosestSession(planningId),
         supabase
           .from('sessions')
           .select(`
-            id, session_date, status, traffic_light, teacher_comment, is_consolidated,
+            id, session_date, status, traffic_light, teacher_comment, is_consolidated, project_id,
             projects(name)
           `)
           .eq('planning_id', planningId)
           .eq('status', 'completed')
           .order('session_date', { ascending: false })
           .limit(20),
+        supabase
+          .from('planning_project_log')
+          .select('project_id, project_evaluations(id)')
+          .eq('planning_id', planningId),
       ])
-    : [null, { data: [], error: null }]
+    : ([null, { data: [], error: null }, { data: [], error: null }] as const)
 
   const closestSession: TodaySession | null = rawClosest
     ? {
@@ -398,6 +405,25 @@ async function buildGroupDetail(g: RawGroup): Promise<GroupDetail> {
       }
     : null
 
+  const effectiveProjectId = closestSession?.projectId ?? planning?.currentProjectId
+  if (planning && effectiveProjectId && effectiveProjectId !== planning.currentProjectId) {
+    const newSuccessors = planning.mapEdges
+      .filter((e) => e.fromProjectId === effectiveProjectId)
+      .map((e) => {
+        const node = planning!.mapNodes.find((n) => n.projectId === e.toProjectId)
+        return node ? { projectId: node.projectId, projectName: node.projectName } : null
+      })
+      .filter((x): x is { projectId: string; projectName: string } => x !== null)
+    planning = { ...planning, successors: newSuccessors }
+  }
+
+  type LogWithEval = { project_id: string; project_evaluations: { id: string }[] }
+  const projectsWithEvals = new Set<string>(
+    ((logsResult.data ?? []) as unknown as LogWithEval[])
+      .filter((l) => (l.project_evaluations?.length ?? 0) > 0)
+      .map((l) => l.project_id)
+  )
+
   const recentSessions: SessionHistoryItem[] = (
     (historyResult.data ?? []) as unknown as RawHistorySession[]
   ).map((s) => ({
@@ -408,6 +434,8 @@ async function buildGroupDetail(g: RawGroup): Promise<GroupDetail> {
     teacherComment: s.teacher_comment,
     isConsolidated: s.is_consolidated,
     projectName: s.projects?.name ?? null,
+    projectId: s.project_id,
+    hasEvaluation: s.project_id !== null && projectsWithEvals.has(s.project_id),
   }))
 
   return {
