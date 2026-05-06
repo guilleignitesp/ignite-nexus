@@ -224,7 +224,7 @@ export function SessionHistoryList({ sessions, groupId, planningId }: SessionHis
 
   return (
     <>
-    <div className="rounded-lg border">
+    <div className="rounded-lg border overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b text-left text-xs text-muted-foreground">
@@ -273,7 +273,7 @@ export function SessionHistoryList({ sessions, groupId, planningId }: SessionHis
                   {s.teacherComment ?? '—'}
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-1">
+                  <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center">
                     <Button
                       size="xs"
                       variant={editingId === s.sessionId ? 'secondary' : 'ghost'}
@@ -290,7 +290,7 @@ export function SessionHistoryList({ sessions, groupId, planningId }: SessionHis
                         disabled={evalLoadingId === s.sessionId}
                         onClick={() => handleEditEval(s)}
                       >
-                        {evalLoadingId === s.sessionId ? '...' : '⭐ Editar evaluación'}
+                        {evalLoadingId === s.sessionId ? '...' : <><span className="hidden sm:inline">⭐ Editar evaluación</span><span className="sm:hidden">⭐ Eval</span></>}
                       </Button>
                     )}
                   </div>
