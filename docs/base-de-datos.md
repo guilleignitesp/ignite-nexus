@@ -35,6 +35,33 @@ Cursos escolares. Solo puede haber uno activo a la vez.
 
 ---
 
+#### `teams`
+Equipos de trabajo de Ignite (organización interna de workers).
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `id` | uuid PK | Identificador único |
+| `name` | text NOT NULL | Nombre del equipo |
+| `is_active` | boolean NOT NULL default true | — |
+| `created_at` | timestamptz NOT NULL default now() | — |
+
+---
+
+#### `worker_teams`
+Relación M:N entre workers y equipos.
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `id` | uuid PK | — |
+| `worker_id` | uuid FK → workers.id ON DELETE CASCADE | Worker del equipo |
+| `team_id` | uuid FK → teams.id ON DELETE CASCADE | Equipo al que pertenece |
+| `joined_at` | timestamptz NOT NULL default now() | Fecha de incorporación |
+| `is_active` | boolean NOT NULL default true | — |
+
+**Índice único:** `(worker_id, team_id) WHERE is_active = true`
+
+---
+
 #### `schools`
 Centros educativos donde opera Ignite.
 
@@ -43,6 +70,7 @@ Centros educativos donde opera Ignite.
 | `id` | uuid PK | Identificador único |
 | `name` | text NOT NULL | Nombre del centro |
 | `address` | text | Dirección postal (opcional) |
+| `team_id` | uuid FK → teams.id ON DELETE SET NULL | Equipo de Ignite responsable del centro (opcional) |
 | `is_active` | boolean NOT NULL default true | Centros inactivos se ocultan |
 | `created_at` | timestamptz NOT NULL default now() | — |
 
@@ -233,15 +261,14 @@ Recursos digitales asociados a un proyecto.
 ---
 
 #### `project_skills`
-Relación M:N entre proyectos y habilidades. Define qué habilidades evalúa un proyecto y cuánto XP otorga.
+Relación M:N entre proyectos y habilidades. Define qué habilidades evalúa un proyecto y su rango de dificultad.
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
 | `id` | uuid PK | — |
 | `project_id` | uuid FK → projects.id ON DELETE CASCADE | — |
 | `skill_id` | uuid FK → skills.id | — |
-| `base_xp` | integer NOT NULL CHECK > 0 | XP base para esta habilidad en este proyecto |
-| `difficulty_grade` | smallint CHECK (1-5) | Multiplicador de dificultad |
+| `rank` | smallint NOT NULL | Rango de dificultad (1=básico … 5=avanzado). El XP se calcula con `calcXP(rank)` en TypeScript en el momento de la evaluación. |
 
 **Índice único:** `(project_id, skill_id)`
 
@@ -257,7 +284,8 @@ Mapas curriculares que organizan proyectos con dependencias (grafo dirigido).
 | `initial_project_id` | uuid FK → projects.id ON DELETE SET NULL | Proyecto inicial del mapa (añadido en migración 009) |
 
 **`project_map_nodes`**: id, map_id, project_id — `UNIQUE(map_id, project_id)`  
-**`project_map_edges`**: id, map_id, from_project_id, to_project_id — `UNIQUE(map_id, from, to)`
+**`project_map_edges`**: id, map_id, from_project_id, to_project_id, percentage (numeric, nullable), label (text, nullable) — `UNIQUE(map_id, from, to)`  
+`percentage` indica el porcentaje de avance del proyecto origen que representa la arista. `label` es una etiqueta opcional visible en el selector de proyecto siguiente del `EvaluationModal`.
 
 ---
 
@@ -394,7 +422,7 @@ Evaluación de un proyecto para un alumno específico.
 | `student_id` | uuid FK → students.id | Alumno evaluado |
 | `project_id` | uuid FK → projects.id | Proyecto evaluado |
 | `worker_id` | uuid FK → workers.id ON DELETE SET NULL | Profesor que evaluó |
-| `xp_multiplier_pct` | integer NOT NULL default 100 CHECK (20-200) | Multiplicador del XP: 100% = nota estándar |
+| `xp_multiplier_pct` | integer NOT NULL default 100 CHECK (30-150) | Multiplicador del XP: 100% = nota estándar, en pasos de 10% |
 | `evaluated_at` | timestamptz NOT NULL default now() | Fecha de evaluación |
 
 ---
@@ -433,7 +461,7 @@ Registro de acciones actitudinales aplicadas a alumnos en sesiones.
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
 | `id` | uuid PK | — |
-| `session_id` | uuid NOT NULL FK → sessions.id ON DELETE CASCADE | Sesión en la que ocurrió |
+| `session_id` | uuid FK → sessions.id ON DELETE CASCADE | Sesión en la que ocurrió (nullable — ver D6) |
 | `student_id` | uuid FK → students.id | Alumno afectado |
 | `worker_id` | uuid FK → workers.id ON DELETE SET NULL | Profesor que la registró |
 | `action_id` | uuid FK → attitude_actions.id | Acción del catálogo |
@@ -1072,6 +1100,19 @@ global_resources:
   ↳ El admin con módulo 'resources' puede crear, editar y desactivar
 ```
 
+#### Cambios de esquema en tiempo de ejecución (fuera de migraciones numeradas)
+
+Cambios aplicados directamente sobre la base de datos que no forman parte de las migraciones numeradas:
+
+```
+attitude_logs:
+  ALTER TABLE public.attitude_logs ALTER COLUMN session_id DROP NOT NULL
+  ↳ session_id pasa a ser nullable para permitir registrar acciones de actitud
+    fuera del contexto de una sesión activa (ej. botón "Actitud" en la cabecera
+    de la página del grupo, que no requiere sesión iniciada)
+  ↳ La trazabilidad por fecha se mantiene a través de recorded_at
+```
+
 ---
 
 ## 5. Decisiones de diseño
@@ -1097,8 +1138,8 @@ En lugar de borrar la matrícula cuando un alumno causa baja, se marca `is_activ
 - Permite actualización incremental (triggers en futuras migraciones)
 - El campo `updated_at` permite detectar inconsistencias
 
-### D6: Fechas en `attitude_logs`
-`attitude_logs.session_id` es NOT NULL: toda acción actitudinal está vinculada a una sesión. Esto garantiza trazabilidad y permite calcular XP por sesión y fecha.
+### D6: `attitude_logs.session_id` es nullable
+`attitude_logs.session_id` se cambió a nullable (ver sección 4 — cambios en tiempo de ejecución). Originalmente era NOT NULL para garantizar trazabilidad por sesión, pero se relajó para permitir registrar acciones de actitud desde el botón "Actitud" de la cabecera del grupo, que no requiere tener una sesión activa. La trazabilidad temporal se mantiene a través de `recorded_at`.
 
 ### D7: `project_evaluations` vinculado a `planning_project_log`
 La evaluación está vinculada al log de planificación (no directamente a la sesión) porque el proyecto puede trabajarse en múltiples sesiones. La trazabilidad completa es: evaluación → planning_project_log → planning → group.
@@ -1117,6 +1158,16 @@ Los módulos de la aplicación se mapean directamente a nombres de módulo en `a
 
 ### D10: `stock_items` usa holder polimórfico
 El titular de un elemento de stock puede ser una ubicación (`stock_locations`) o un trabajador (`workers`). En lugar de dos FKs nullable, se usa un patrón polimórfico con `holder_type` + `holder_id`. Esto simplifica el modelo pero requiere que la aplicación gestione la relación correctamente (no hay FK de base de datos que lo garantice).
+
+### D11: Arquitectura del XP — dos fuentes separadas
+El XP de un alumno se origina en dos fuentes completamente separadas:
+- **XP académico** (`project_evaluations` → `skill_evaluations`): otorgado al finalizar un proyecto. Se acumula en `student_xp.academic_xp`.
+- **XP de actitud** (`attitude_logs`): otorgado (o penalizado) por acciones actitudinales. Se acumula en `student_xp.attitude_xp`.
+
+`student_xp.total_xp = academic_xp + attitude_xp`. Para calcular el XP total actual de un alumno se debe sumar ambas fuentes; consultar solo `student_xp` no refleja el XP de actitud registrado entre actualizaciones del trigger (si este no está activo). La función `recordAttitudeAction` en `teacher-sessions.ts` calcula `previousTotalXp` sumando ambas tablas.
+
+### D12: Modelo de acceso abierto para operaciones de profesor
+`assertTeacherOwnsGroup` en `src/lib/actions/teacher-sessions.ts` solo verifica que el usuario tenga un `workerId` válido (está autenticado como worker). No comprueba que el worker esté asignado al grupo en `group_assignments`. Esto permite que cualquier worker autenticado opere en cualquier grupo, simplificando el flujo operativo (sin necesidad de configurar asignaciones antes de poder usar una pantalla de grupo). La trazabilidad se mantiene a través de `worker_id` en las tablas de sesiones y logs.
 
 ---
 

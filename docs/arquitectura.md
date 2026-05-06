@@ -150,7 +150,7 @@ ignite-nexus/
 │   │   ├── auth/                  # LoginForm
 │   │   ├── teacher/
 │   │   │   ├── TeacherNav.tsx     # Barra de navegación del profesor
-│   │   │   ├── group/             # ActiveSessionForm, AttendanceHistorySection, ProjectMapReadOnly
+│   │   │   ├── group/             # ActiveSessionForm, FinalizeDialog, EvaluationModal, SessionHistoryList, TodaySessionSection, AttitudeModal, AttitudeButton, AttendanceHistorySection, ProjectMapReadOnly
 │   │   │   ├── timesheet/         # TimesheetToggle, TimesheetHistoryList
 │   │   │   ├── absences/          # AbsencesList, RequestAbsenceDialog
 │   │   │   └── resources/         # ResourcesList
@@ -173,7 +173,7 @@ ignite-nexus/
 │   │   │   ├── teachers.ts        # getWorkersPage(), getWorkerProfile() — cliente autenticado, sin caché
 │   │   │   ├── students.ts        # getStudentsPage() (RPC), getStudentProfile() — cliente autenticado, sin caché
 │   │   │   ├── enrollments.ts     # getEnrollmentStats() (RPC), getRecentEnrollments/Leaves(), getActiveGroups() — mixto
-│   │   │   ├── teacher.ts         # getTeacherGroupDetail(), getActiveSession() — datos operativos del profesor
+│   │   │   ├── teacher.ts         # getTeacherDashboard(), getGroupDetail(), getGroupDetailForAnyWorker(), buildGroupDetail() — datos operativos del profesor. Incluye GroupDetail, TodaySession, SessionHistoryItem, GroupPlanningData con MapEdge (percentage, label)
 │   │   │   ├── timesheets.ts      # getTimesheetStatus() — fichajes del profesor
 │   │   │   ├── absences.ts        # getMyAbsences(), getAdminAbsencesPage(), getAbsenceReasons()
 │   │   │   ├── global-resources.ts # getTeacherResources(), getAdminResourcesPage(), getSchoolsForSelect(), getGroupsForSelect()
@@ -188,7 +188,7 @@ ignite-nexus/
 │   │   │   ├── teachers.ts        # createWorker, toggleWorkerStatus, upsertModulePermission, setSuperAdmin
 │   │   │   ├── students.ts        # updateStudent, toggleStudentStatus, updateEvaluationMultiplier
 │   │   │   ├── enrollments.ts     # bulkEnroll, bulkDeactivate
-│   │   │   ├── teacher-sessions.ts # startSession, endSession, markAttendance, finalizeSession, assignProject
+│   │   │   ├── teacher-sessions.ts # createTodaySession, saveSession, finalizeSession, getProjectSkillsForEvaluation, submitProjectEvaluation, updateProjectEvaluation, markSessionUnknown, markSessionExcused, getProjectDetails, getSessionEvaluation, getSessionAttendances, getAttitudeActions, recordAttitudeAction
 │   │   │   ├── timesheets.ts      # recordTimesheet
 │   │   │   ├── absences.ts        # requestAbsence, approveAbsence, rejectAbsence
 │   │   │   ├── global-resources.ts # createGlobalResource, updateGlobalResource, toggleGlobalResourceStatus
@@ -516,6 +516,22 @@ Definidas como `SECURITY DEFINER` para evitar recursión en RLS:
 import { cache } from 'react'
 export const getUserProfile = cache(async () => { ... })
 ```
+
+### 4.7 Modelo de acceso abierto para operaciones de profesor
+
+Las Server Actions del módulo del profesor (`teacher-sessions.ts`) usan un guard simplificado:
+
+```ts
+async function assertTeacherOwnsGroup(_groupId: string): Promise<void> {
+  const profile = await getUserProfile()
+  if (!profile?.workerId) throw new Error('Unauthorized')
+  // No se comprueba group_assignments — cualquier worker autenticado puede operar
+}
+```
+
+Esto significa que **cualquier worker autenticado puede operar en cualquier grupo**, sin necesidad de una asignación previa en `group_assignments`. La trazabilidad se mantiene a través de `worker_id` registrado en sesiones y logs. Este modelo se eligió para simplificar el flujo operativo; si se necesita acceso restringido en el futuro, se puede añadir la comprobación contra `group_assignments` sin romper la interfaz.
+
+Las políticas RLS en DB sí siguen activas y restringen acceso según `auth.uid()`, pero no filtran por grupo asignado para las operaciones de escritura del profesor (sesiones, asistencias, attitude_logs).
 
 ---
 
@@ -932,22 +948,75 @@ Todos los módulos del panel de administración completados hasta la fecha, con 
 
 ---
 
-### Pantalla de grupo
+### Pantalla de grupo (profesor)
 
 **Ruta:** `/teacher/groups/[groupId]`  
-**Descripción:** Vista operativa principal del profesor para un grupo. Muestra el mapa curricular del grupo (ProjectMapReadOnly), permite iniciar/finalizar sesiones y registrar asistencia (ActiveSessionForm), y consultar el historial de asistencia (AttendanceHistorySection).
+**Descripción:** Vista operativa principal del profesor para un grupo. Muestra la sesión del día (o sesión vencida más próxima), historial de sesiones completadas con edición inline, mapa curricular de solo lectura e historial de asistencia. El profesor puede iniciar sesiones, registrar asistencia, finalizar con semáforo y evaluación de proyecto, y registrar acciones de actitud.
 
 | Capa | Archivos |
 |------|---------|
 | Página | `src/app/[locale]/(teacher)/teacher/groups/[groupId]/page.tsx` |
-| Datos | `src/lib/data/teacher.ts` — `getTeacherGroupDetail()`, `getActiveSession()` |
-| Acciones | `src/lib/actions/teacher-sessions.ts` — `startSession`, `endSession`, `markAttendance`, `finalizeSession`, `assignProject` |
-| Componentes | `src/components/teacher/group/ActiveSessionForm.tsx`, `AttendanceHistorySection.tsx`, `ProjectMapReadOnly.tsx` |
-| Utilidades | `src/lib/utils/map-layout.ts` — `computeLayout()` BFS topológico compartido con MapEditor (hgap=200) |
+| Datos | `src/lib/data/teacher.ts` — `getGroupDetailForAnyWorker()`, `buildGroupDetail()` |
+| Acciones | `src/lib/actions/teacher-sessions.ts` — acciones completas de sesión, evaluación y actitud |
+| Componentes | `src/components/teacher/group/` — ver listado completo abajo |
+| Utilidades | `src/lib/utils/map-layout.ts` — `computeLayout()` BFS topológico |
+
+**Componentes del módulo (`src/components/teacher/group/`):**
+
+| Componente | Descripción |
+|-----------|-------------|
+| `TodaySessionSection` | Orquesta la sección de sesión del día: detecta sesiones vencidas, futuras pending y sesiones activas. Botón "Iniciar sesión" cuando no hay sesión. |
+| `ActiveSessionForm` | Formulario de sesión activa: lista de asistencia (checkbox por alumno), comentario del profesor, semáforo, botones Guardar / Finalizar / Marcar desconocida / Marcar excusada. |
+| `FinalizeDialog` | Diálogo de finalización: selección de semáforo + checkbox "proyecto completado". Si se completa el proyecto, abre `EvaluationModal` antes de confirmar. |
+| `EvaluationModal` | Modal de evaluación de proyecto: tabla alumnos × habilidades con multiplicador de XP (30–150% en pasos de 10%). En modo edición (historial) usa `updateProjectEvaluation`. Selector de proyecto siguiente como grid de cards con barra de progreso y etiqueta si los datos vienen del mapa. |
+| `SessionHistoryList` | Tabla de sesiones completadas (últimas 20). Columna de acciones con edición inline (`InlineEditPanel`) y botón "Editar evaluación" para sesiones con evaluación (`hasEvaluation`). Responsive: botones apilados en móvil, scroll horizontal. |
+| `AttitudeButton` | Wrapper cliente ligero que gestiona el estado `open` del `AttitudeModal`. Siempre visible en la cabecera de la página. |
+| `AttitudeModal` | Modal de acciones de actitud: paso 1 — grid de alumnos + lista de acciones (verde positivo, rojo negativo); paso 2 — pantalla de impacto con XP animado, auto-cierre a los 3 segundos. |
+| `AttendanceHistorySection` | Sección de historial de asistencia por alumno. |
+| `ProjectMapReadOnly` | Visualización de solo lectura del mapa curricular del grupo. |
+
+**Flujo de finalización con evaluación:**
+1. Profesor pulsa "Finalizar" → `FinalizeDialog` (semáforo + checkbox proyecto completado)
+2. Si proyecto completado → `EvaluationModal` se abre (preloaded students = alumnos con asistencia en estado UI)
+3. Profesor ajusta multiplicadores XP por alumno y habilidad
+4. Selecciona proyecto siguiente (cards con % y etiqueta del mapa)
+5. `submitProjectEvaluation` guarda evaluaciones, actualiza `student_xp`, crea log del siguiente proyecto
+6. `finalizeSession` actualiza `project_id` del siguiente pending al nuevo proyecto
+7. `window.location.reload()` para refrescar con datos del servidor
 
 **Notas técnicas:**
-- `TrafficLight` y `SessionStatus` definidos en `@/types/index.ts` y re-exportados desde `teacher.ts` para compatibilidad hacia atrás
-- `attendanceMap` pre-computado como `Map<studentId, attended>` para evitar O(n²) en el render
+- `assertTeacherOwnsGroup` solo verifica autenticación (no comprueba `group_assignments`) — cualquier worker autenticado puede operar en cualquier grupo
+- `MapEdge` incluye `percentage: number | null` y `label: string | null` — usados en las cards de proyecto siguiente del `EvaluationModal`
+- Merge de students en `EvaluationModal`: DB students tienen prioridad; `preloadedStudents` rellena los que falten (para sesiones recién creadas sin asistencia guardada en DB todavía)
+- `TrafficLight` y `SessionStatus` definidos en `@/types/index.ts` y re-exportados desde `teacher.ts`
+
+---
+
+### Detalle de grupo (admin)
+
+**Ruta:** `/admin/schools/groups/[groupId]`  
+**Descripción:** Vista de administración de un grupo con gestión completa: horario, profesores asignados, alumnos matriculados, planificación, historial de sesiones con edición, evaluaciones y registro de bajas.
+
+| Capa | Archivos |
+|------|---------|
+| Página | `src/app/[locale]/(admin)/admin/schools/groups/[groupId]/page.tsx` |
+| Datos | `src/lib/data/schools.ts` — `getGroupAdminDetail()` |
+| Acciones | `src/lib/actions/schools.ts` — `adminUpdateSession`, `deleteSession`, `createGroupPlanning`, `getSessionEvaluationForAdmin`, `getSessionAttendancesForAdmin`, `getGroupEnrollmentHistory`, `enrollStudentInGroup`, `unenrollStudentFromGroup`, `createAndEnrollStudent` |
+| Componentes | `src/components/admin/schools/GroupDetailClient.tsx` |
+
+**Características de `GroupDetailClient`:**
+- Tabla de sesiones con columnas: fecha, hora, estado, proyecto, semáforo, comentario, acciones
+- Sesiones con evaluación marcadas con borde izquierdo (`border-primary`) y pill "✓ Completado"
+- Edición de sesión: estado, proyecto, semáforo, comentario, asistencia (cargada con `getSessionAttendancesForAdmin` — date-correct para histórico, usa rango de fechas en `group_enrollments`)
+- Botón "⭐ Editar evaluación" para sesiones completadas con evaluación → `EvaluationModal` en modo edición
+- Sheet de historial de altas/bajas ("Movimientos de alumnos") con `getGroupEnrollmentHistory`
+- Sheet de auditoría del grupo (change log)
+- Gestión de alumnos: búsqueda accent-insensitive, matricular existente, crear y matricular nuevo, dar de baja
+
+**Notas técnicas:**
+- `hasEvaluation` calculado en `getGroupAdminDetail` mediante `Promise.all([sessionsQuery, logsQuery])` y un `Set<string>` de `project_id`s con evaluaciones — O(1) por sesión
+- `getSessionAttendancesForAdmin` idéntica a la versión del profesor pero con `assertSchoolsAccess()` en lugar del guard de teacher
+- `getSessionEvaluationForAdmin` ídem con `assertSchoolsAccess()`
 
 ---
 
