@@ -155,6 +155,11 @@ export function ActiveSessionForm({
   return (
     <div className="rounded-lg border p-5 space-y-5">
       {/* Info del proyecto activo */}
+      {!currentProjectName && (
+        <p className="text-sm text-muted-foreground italic">
+          Sin proyecto asignado — solicítalo al equipo de Pedagogía
+        </p>
+      )}
       {currentProjectName && (
         <div className="space-y-1.5">
           <div className="flex items-baseline gap-2 flex-wrap">

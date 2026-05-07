@@ -272,7 +272,18 @@ export async function getGroupAdminDetail(
         .map((l) => l.project_id)
     )
 
-    sessions = ((sessionsResult.data ?? []) as unknown as RawGroupSession[]).map((s) => {
+    // Sessions arrive DESC by date — first occurrence of each project_id is the latest session
+    const rawSessionsList = (sessionsResult.data ?? []) as unknown as RawGroupSession[]
+    const lastSessionByProject = new Map<string, string>()
+    for (const s of rawSessionsList) {
+      const pid = s.projects?.id ?? null
+      if (!pid) continue
+      if (!lastSessionByProject.has(pid)) {
+        lastSessionByProject.set(pid, s.id)
+      }
+    }
+
+    sessions = rawSessionsList.map((s) => {
       const projectId = s.projects?.id ?? null
       return {
         id: s.id,
@@ -289,7 +300,10 @@ export async function getGroupAdminDetail(
           studentId: a.student_id,
           attended: a.attended,
         })),
-        hasEvaluation: projectId !== null && projectsWithEvals.has(projectId),
+        hasEvaluation:
+          projectId !== null &&
+          projectsWithEvals.has(projectId) &&
+          lastSessionByProject.get(projectId) === s.id,
       }
     })
   }

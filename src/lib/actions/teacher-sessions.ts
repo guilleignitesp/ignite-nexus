@@ -167,22 +167,11 @@ export async function finalizeSession(input: {
     .limit(1)
     .maybeSingle()
 
-  if (nextPending) {
-    let nextProject: string | null = input.nextProjectId
-    if (!nextProject) {
-      const { data: cur } = await supabase
-        .from('sessions')
-        .select('project_id')
-        .eq('id', input.sessionId)
-        .single()
-      nextProject = (cur as { project_id: string | null } | null)?.project_id ?? null
-    }
-    if (nextProject) {
-      await supabase
-        .from('sessions')
-        .update({ project_id: nextProject })
-        .eq('id', (nextPending as { id: string }).id)
-    }
+  if (nextPending && input.nextProjectId) {
+    await supabase
+      .from('sessions')
+      .update({ project_id: input.nextProjectId })
+      .eq('id', (nextPending as { id: string }).id)
   }
   // planning_project_log is now created by submitProjectEvaluation
 }
@@ -456,15 +445,6 @@ export async function getProjectDetails(
       .eq('project_id', projectId)
       .eq('status', 'completed'),
   ])
-
-  console.log('[getProjectDetails]', {
-    projectId,
-    planningId,
-    completedSessionCount: sessionsResult.data?.length ?? 'ERROR',
-    sessionsError: sessionsResult.error?.message,
-    sessionsErrorCode: sessionsResult.error?.code,
-    rawData: JSON.stringify(sessionsResult.data?.slice(0, 2)),
-  })
 
   if (projectResult.error || !projectResult.data) return null
 

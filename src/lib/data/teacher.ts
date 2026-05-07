@@ -409,15 +409,21 @@ async function buildGroupDetail(g: RawGroup): Promise<GroupDetail> {
       }
     : null
 
-  const effectiveProjectId = closestSession?.projectId ?? planning?.currentProjectId
-  if (planning && effectiveProjectId && effectiveProjectId !== planning.currentProjectId) {
-    const newSuccessors = planning.mapEdges
-      .filter((e) => e.fromProjectId === effectiveProjectId)
-      .map((e) => {
-        const node = planning!.mapNodes.find((n) => n.projectId === e.toProjectId)
-        return node ? { projectId: node.projectId, projectName: node.projectName, percentage: e.percentage, label: e.label } : null
-      })
-      .filter((x): x is { projectId: string; projectName: string; percentage: number | null; label: string | null } => x !== null)
+  if (planning && closestSession) {
+    planning = {
+      ...planning,
+      currentProjectId: closestSession.projectId,
+      currentProjectName: closestSession.projectName,
+    }
+    const newSuccessors = closestSession.projectId
+      ? planning.mapEdges
+          .filter((e) => e.fromProjectId === closestSession.projectId)
+          .map((e) => {
+            const node = planning!.mapNodes.find((n) => n.projectId === e.toProjectId)
+            return node ? { projectId: node.projectId, projectName: node.projectName, percentage: e.percentage, label: e.label } : null
+          })
+          .filter((x): x is { projectId: string; projectName: string; percentage: number | null; label: string | null } => x !== null)
+      : []
     planning = { ...planning, successors: newSuccessors }
   }
 
@@ -428,9 +434,17 @@ async function buildGroupDetail(g: RawGroup): Promise<GroupDetail> {
       .map((l) => l.project_id)
   )
 
-  const recentSessions: SessionHistoryItem[] = (
-    (historyResult.data ?? []) as unknown as RawHistorySession[]
-  ).map((s) => ({
+  // Sessions arrive DESC by date — first occurrence of each project_id is the latest session
+  const lastSessionByProject = new Map<string, string>()
+  const rawSessions = (historyResult.data ?? []) as unknown as RawHistorySession[]
+  for (const s of rawSessions) {
+    if (!s.project_id) continue
+    if (!lastSessionByProject.has(s.project_id)) {
+      lastSessionByProject.set(s.project_id, s.id)
+    }
+  }
+
+  const recentSessions: SessionHistoryItem[] = rawSessions.map((s) => ({
     sessionId: s.id,
     sessionDate: s.session_date,
     status: s.status as SessionStatus,
@@ -439,7 +453,10 @@ async function buildGroupDetail(g: RawGroup): Promise<GroupDetail> {
     isConsolidated: s.is_consolidated,
     projectName: s.projects?.name ?? null,
     projectId: s.project_id,
-    hasEvaluation: s.project_id !== null && projectsWithEvals.has(s.project_id),
+    hasEvaluation:
+      s.project_id !== null &&
+      projectsWithEvals.has(s.project_id) &&
+      lastSessionByProject.get(s.project_id) === s.id,
   }))
 
   return {

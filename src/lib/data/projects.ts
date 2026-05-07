@@ -22,7 +22,7 @@ export interface ProjectSkillEntry {
 }
 
 export function calcXP(rank: number): number {
-  return Math.round(50 * Math.pow(rank, 1.4))
+  return Math.round(10 * Math.pow(rank, 1.2))
 }
 
 export interface ProjectListItem {

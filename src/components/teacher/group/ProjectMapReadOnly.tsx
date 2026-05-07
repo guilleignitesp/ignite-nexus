@@ -11,12 +11,14 @@ import {
   type Node,
   type Edge,
   type NodeProps,
+  type ReactFlowInstance,
   MarkerType,
 } from '@xyflow/react'
 import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 import { computeLayout } from '@/lib/utils/map-layout'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Sheet,
   SheetContent,
@@ -138,12 +140,17 @@ export function ProjectMapReadOnly({
     }
   }, [selectedProjectId])
 
-  const onSelectionChange = useCallback(
-    ({ nodes: selNodes }: { nodes: Node[]; edges: Edge[] }) => {
-      setSelectedProjectId(selNodes.length === 1 ? selNodes[0].id : null)
-    },
-    []
-  )
+  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    setSelectedProjectId(node.id)
+  }, [])
+
+  const onPaneClick = useCallback(() => {
+    setSelectedProjectId(null)
+  }, [])
+
+  const onInit = useCallback((instance: ReactFlowInstance<RONode, Edge>) => {
+    setTimeout(() => instance.fitView({ padding: 0.2 }), 50)
+  }, [])
 
   const skillsByBranch = useMemo(() => {
     if (!details) return {} as Record<string, ProjectFullDetails['skills']>
@@ -168,8 +175,12 @@ export function ProjectMapReadOnly({
         nodesConnectable={false}
         elementsSelectable={true}
         zoomOnDoubleClick={false}
-        onSelectionChange={onSelectionChange}
+        onNodeClick={onNodeClick}
+        onPaneClick={onPaneClick}
+        onInit={onInit}
         fitView
+        fitViewOptions={{ padding: 0.2 }}
+        defaultViewport={{ x: 0, y: 0, zoom: 1 }}
         proOptions={{ hideAttribution: true }}
       >
         <Background />

@@ -245,29 +245,20 @@ export function EvaluationModal({
         {!isEditMode && (
           <div className="space-y-2 border-t pt-3">
             <p className="text-sm font-medium">Siguiente proyecto</p>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              <button
-                type="button"
-                disabled={isSubmitting}
-                onClick={() => setNextProjectId('')}
-                className={`rounded-md border p-3 text-left text-sm transition-colors cursor-pointer ${
-                  nextProjectId === ''
-                    ? 'border-primary bg-primary/5'
-                    : 'border-input hover:bg-muted/40'
-                }`}
-              >
-                <span className="font-medium text-muted-foreground">Sin proyecto siguiente</span>
-              </button>
-              {successors.map((s) => {
-                const selected = nextProjectId === s.projectId
-                return (
+            {successors.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No hay más proyectos disponibles. Este es el proyecto final del mapa.
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {successors.map((s) => (
                   <button
                     key={s.projectId}
                     type="button"
                     disabled={isSubmitting}
-                    onClick={() => setNextProjectId(selected ? '' : s.projectId)}
+                    onClick={() => setNextProjectId(s.projectId)}
                     className={`rounded-md border p-3 text-left text-sm transition-colors cursor-pointer space-y-1.5 ${
-                      selected ? 'border-primary bg-primary/5' : 'border-input hover:bg-muted/40'
+                      nextProjectId === s.projectId ? 'border-primary bg-primary/5' : 'border-input hover:bg-muted/40'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -290,9 +281,9 @@ export function EvaluationModal({
                       </div>
                     )}
                   </button>
-                )
-              })}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -302,7 +293,7 @@ export function EvaluationModal({
           <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
             Cancelar
           </Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting || loading}>
+          <Button onClick={handleSubmit} disabled={isSubmitting || loading || (!isEditMode && successors.length > 0 && !nextProjectId)}>
             {isSubmitting ? 'Guardando...' : 'Confirmar evaluación'}
           </Button>
         </DialogFooter>
