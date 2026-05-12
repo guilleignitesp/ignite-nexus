@@ -45,6 +45,16 @@ export async function toggleStudentStatus(id: string): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
+export async function deleteAttitudeLog(logId: string): Promise<void> {
+  await assertStudentsAccess()
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('attitude_logs')
+    .delete()
+    .eq('id', logId)
+  if (error) throw new Error(error.message)
+}
+
 export async function updateEvaluationMultiplier(
   evaluationId: string,
   multiplierPct: number

@@ -297,16 +297,16 @@ export async function submitProjectEvaluation(input: {
   const allStudentIds = input.evaluations.map((e) => e.studentId)
   const { data: existingXp } = await supabase
     .from('student_xp')
-    .select('student_id, skill_id, academic_xp, attitude_xp')
+    .select('student_id, skill_id, academic_xp')
     .in('student_id', allStudentIds)
 
-  type XpRow = { student_id: string; skill_id: string; academic_xp: number; attitude_xp: number }
+  type XpRow = { student_id: string; skill_id: string; academic_xp: number }
   const xpMap = new Map<string, XpRow>()
   for (const row of (existingXp ?? []) as XpRow[]) {
     xpMap.set(`${row.student_id}:${row.skill_id}`, row)
   }
 
-  const xpUpserts: { student_id: string; skill_id: string; academic_xp: number; attitude_xp: number; total_xp: number }[] = []
+  const xpUpserts: { student_id: string; skill_id: string; academic_xp: number; total_xp: number }[] = []
 
   for (const ev of input.evaluations) {
     if (logId) {
@@ -344,15 +344,12 @@ export async function submitProjectEvaluation(input: {
     for (const sk of ev.skills) {
       const key = `${ev.studentId}:${sk.skillId}`
       const existing = xpMap.get(key)
-      const prevAcademic = existing?.academic_xp ?? 0
-      const prevAttitude = existing?.attitude_xp ?? 0
-      const newAcademic = prevAcademic + sk.xpAwarded
+      const newAcademic = (existing?.academic_xp ?? 0) + sk.xpAwarded
       xpUpserts.push({
         student_id: ev.studentId,
         skill_id: sk.skillId,
         academic_xp: newAcademic,
-        attitude_xp: prevAttitude,
-        total_xp: newAcademic + prevAttitude,
+        total_xp: newAcademic,
       })
     }
   }
@@ -590,15 +587,15 @@ export async function updateProjectEvaluation(input: {
 
       const { data: xpRow } = await supabase
         .from('student_xp')
-        .select('academic_xp, attitude_xp')
+        .select('academic_xp')
         .eq('student_id', ev.studentId)
         .eq('skill_id', sk.skillId)
         .maybeSingle()
 
-      type XpRow = { academic_xp: number; attitude_xp: number }
+      type XpRow = { academic_xp: number }
       const existing = xpRow as XpRow | null
       const newAcademic = (existing?.academic_xp ?? 0) + diff
-      const newTotal = newAcademic + (existing?.attitude_xp ?? 0)
+      const newTotal = newAcademic
 
       await supabase
         .from('student_xp')

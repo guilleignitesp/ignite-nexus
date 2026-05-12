@@ -1,14 +1,15 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import type { StudentXPEntry } from '@/lib/data/students'
+import type { StudentXPEntry, AttitudeLogEntry } from '@/lib/data/students'
 
 interface XPTrajectoryProps {
   xpEntries: StudentXPEntry[]
+  attitudeLogs: AttitudeLogEntry[]
   locale: string
 }
 
-export function XPTrajectory({ xpEntries, locale }: XPTrajectoryProps) {
+export function XPTrajectory({ xpEntries, attitudeLogs, locale }: XPTrajectoryProps) {
   const t = useTranslations('students')
 
   function localName(obj: { name_es: string; name_en: string; name_ca: string } | null | undefined) {
@@ -40,7 +41,7 @@ export function XPTrajectory({ xpEntries, locale }: XPTrajectoryProps) {
       <div className="border-b px-4 py-3">
         <h2 className="font-semibold">{t('xpTitle')}</h2>
       </div>
-      <div className="p-4">
+      <div className="p-4 space-y-4">
         {xpEntries.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('noXP')}</p>
         ) : (
@@ -58,8 +59,6 @@ export function XPTrajectory({ xpEntries, locale }: XPTrajectoryProps) {
                   <thead>
                     <tr className="border-b text-left text-xs text-muted-foreground">
                       <th className="pb-2 pr-4 font-medium">{t('colSkill')}</th>
-                      <th className="pb-2 pr-4 font-medium text-right">{t('colAcademicXP')}</th>
-                      <th className="pb-2 pr-4 font-medium text-right">{t('colAttitudeXP')}</th>
                       <th className="pb-2 pr-4 font-medium text-right">{t('colTotalXP')}</th>
                       <th className="pb-2 font-medium text-right">{t('colLevel')}</th>
                     </tr>
@@ -68,18 +67,40 @@ export function XPTrajectory({ xpEntries, locale }: XPTrajectoryProps) {
                     {branch.entries.map((entry, i) => (
                       <tr key={i} className="border-b last:border-0">
                         <td className="py-2 pr-4">{localName(entry.skills)}</td>
-                        <td className="py-2 pr-4 text-right tabular-nums">{entry.academic_xp}</td>
-                        <td className="py-2 pr-4 text-right tabular-nums">{entry.attitude_xp}</td>
                         <td className="py-2 pr-4 text-right tabular-nums font-medium">{entry.total_xp}</td>
                         <td className="py-2 text-right tabular-nums">{entry.level}</td>
                       </tr>
                     ))}
+                    <tr className="border-t bg-muted/20">
+                      <td className="py-2 pr-4 text-xs font-semibold text-muted-foreground">Total</td>
+                      <td className="py-2 pr-4 text-right tabular-nums text-xs font-semibold">
+                        {branch.entries.reduce((s, e) => s + e.total_xp, 0)}
+                      </td>
+                      <td className="py-2" />
+                    </tr>
                   </tbody>
                 </table>
               </div>
             ))}
           </div>
         )}
+
+        {(xpEntries.length > 0 || attitudeLogs.length > 0) && (() => {
+          const academicTotal = xpEntries.reduce((s, e) => s + e.total_xp, 0)
+          const attitudeTotal = attitudeLogs.reduce((s, l) => s + l.xp_awarded, 0)
+          return (
+            <div className="border-t pt-4 flex flex-wrap gap-x-6 gap-y-1 text-sm">
+              <div>
+                <span className="text-muted-foreground">XP Actitud: </span>
+                <span className="font-semibold tabular-nums">{attitudeTotal}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Total global: </span>
+                <span className="font-bold tabular-nums">{academicTotal + attitudeTotal}</span>
+              </div>
+            </div>
+          )
+        })()}
       </div>
     </section>
   )

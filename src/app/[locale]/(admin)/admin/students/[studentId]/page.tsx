@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EditStudentDialog } from '@/components/admin/students/EditStudentDialog'
 import { GroupsCard } from '@/components/admin/students/GroupsCard'
+import { CurrentProject } from '@/components/admin/students/CurrentProject'
+import { CompletedProjects } from '@/components/admin/students/CompletedProjects'
 import { XPTrajectory } from '@/components/admin/students/XPTrajectory'
-import { EvaluationHistory } from '@/components/admin/students/EvaluationHistory'
 import { AttitudeLog } from '@/components/admin/students/AttitudeLog'
 
 export default async function StudentProfilePage({
@@ -54,11 +55,18 @@ export default async function StudentProfilePage({
       {/* Groups */}
       <GroupsCard enrollments={student.group_enrollments} locale={locale} />
 
-      {/* XP Trajectory */}
-      <XPTrajectory xpEntries={student.student_xp} locale={locale} />
+      {/* Current project */}
+      <CurrentProject currentProject={student.currentProject} />
 
-      {/* Evaluations */}
-      <EvaluationHistory evaluations={student.project_evaluations} locale={locale} />
+      {/* Completed projects */}
+      <CompletedProjects
+        projects={student.completedProjects}
+        studentFirstName={student.first_name}
+        studentLastName={student.last_name}
+      />
+
+      {/* XP Trajectory */}
+      <XPTrajectory xpEntries={student.student_xp} attitudeLogs={student.attitude_logs} locale={locale} />
 
       {/* Attitude log */}
       <AttitudeLog logs={student.attitude_logs} locale={locale} />
