@@ -443,6 +443,86 @@ export async function getSessionAttendancesForAdmin(
     .sort((a, b) => a.lastName.localeCompare(b.lastName))
 }
 
+export async function deleteProjectEvaluation(sessionId: string): Promise<void> {
+  await assertSchoolsAccess()
+  const supabase = await createClient()
+
+  // Step 1: session → project_id + planning_id
+  const { data: sess, error: sessErr } = await supabase
+    .from('sessions')
+    .select('project_id, planning_id')
+    .eq('id', sessionId)
+    .single()
+  if (sessErr || !sess) throw new Error(sessErr?.message ?? 'Session not found')
+
+  type SessRow = { project_id: string | null; planning_id: string }
+  const { project_id: projectId, planning_id: planningId } = sess as unknown as SessRow
+  if (!projectId) throw new Error('Session has no project')
+
+  // Step 2: find planning_project_log
+  const { data: logRow } = await supabase
+    .from('planning_project_log')
+    .select('id')
+    .eq('planning_id', planningId)
+    .eq('project_id', projectId)
+    .order('assigned_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (!logRow) return
+  const logId = (logRow as { id: string }).id
+
+  // Step 3: fetch all project_evaluations with skill_evaluations
+  const { data: evalsData, error: evalsErr } = await supabase
+    .from('project_evaluations')
+    .select('id, student_id, skill_evaluations(skill_id, xp_awarded)')
+    .eq('planning_project_log_id', logId)
+  if (evalsErr) throw new Error(evalsErr.message)
+
+  type EvalWithSkills = {
+    id: string
+    student_id: string
+    skill_evaluations: { skill_id: string; xp_awarded: number }[]
+  }
+  const evals = (evalsData ?? []) as unknown as EvalWithSkills[]
+
+  // Step 4: reverse XP for each student/skill
+  for (const ev of evals) {
+    for (const se of ev.skill_evaluations ?? []) {
+      const { data: xpRow } = await supabase
+        .from('student_xp')
+        .select('academic_xp')
+        .eq('student_id', ev.student_id)
+        .eq('skill_id', se.skill_id)
+        .maybeSingle()
+
+      const current = (xpRow as { academic_xp: number } | null)?.academic_xp ?? 0
+      const newAcademic = Math.max(0, current - se.xp_awarded)
+      await supabase
+        .from('student_xp')
+        .upsert(
+          { student_id: ev.student_id, skill_id: se.skill_id, academic_xp: newAcademic, total_xp: newAcademic },
+          { onConflict: 'student_id,skill_id' }
+        )
+    }
+  }
+
+  // Steps 5-6: delete project_evaluations — skill_evaluations cascade automatically
+  // (skill_evaluations.evaluation_id FK has ON DELETE CASCADE)
+  const { error: evalDelErr } = await supabase
+    .from('project_evaluations')
+    .delete()
+    .eq('planning_project_log_id', logId)
+  if (evalDelErr) throw new Error(evalDelErr.message)
+
+  // Step 7: delete planning_project_log — no cascade from this FK, must delete after evaluations
+  const { error: logDelErr } = await supabase
+    .from('planning_project_log')
+    .delete()
+    .eq('id', logId)
+  if (logDelErr) throw new Error(logDelErr.message)
+}
+
 export async function getGroupEnrollmentHistory(
   groupId: string,
 ): Promise<{ id: string; studentId: string; firstName: string; lastName: string; enrolledAt: string; leftAt: string | null; isActive: boolean }[]> {

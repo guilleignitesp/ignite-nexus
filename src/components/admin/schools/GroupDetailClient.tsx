@@ -31,6 +31,7 @@ import {
   createAndEnrollStudent,
   adminUpdateSession,
   deleteSession,
+  deleteProjectEvaluation,
   getSessionAttendancesForAdmin,
   getGroupEnrollmentHistory,
   getSessionEvaluationForAdmin,
@@ -158,6 +159,21 @@ export function GroupDetailClient({ group }: Props) {
   type EvalState = { sessionId: string; projectId: string; existingEvals: { studentId: string; skills: { skillId: string; xpAwarded: number }[] }[] }
   const [evalState, setEvalState] = useState<EvalState | null>(null)
   const [evalLoadingId, setEvalLoadingId] = useState<string | null>(null)
+  const [deleteEvalConfirmId, setDeleteEvalConfirmId] = useState<string | null>(null)
+  const [deletingEvalId, setDeletingEvalId] = useState<string | null>(null)
+
+  async function handleDeleteEval(sessionId: string) {
+    setDeletingEvalId(sessionId)
+    try {
+      await deleteProjectEvaluation(sessionId)
+      setDeleteEvalConfirmId(null)
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error')
+    } finally {
+      setDeletingEvalId(null)
+    }
+  }
 
   async function handleEditEval(session: GroupSession) {
     if (!session.projectId) return
@@ -503,21 +519,53 @@ export function GroupDetailClient({ group }: Props) {
                       )}
                     </td>
                     <td className="py-2">
-                      <div className="flex items-center gap-1">
-                        <Button size="xs" variant="outline" onClick={() => openEdit(session)}>
-                          Editar
-                        </Button>
-                        {session.status === 'completed' && session.hasEvaluation && (
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            disabled={evalLoadingId === session.id}
-                            onClick={() => handleEditEval(session)}
+                      {deleteEvalConfirmId === session.id ? (
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                          <span className="text-muted-foreground">¿Eliminar completado? Esto borrará las evaluaciones y revertirá el XP.</span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteEval(session.id)}
+                            disabled={deletingEvalId === session.id}
+                            className="font-medium text-destructive hover:underline disabled:opacity-50"
                           >
-                            {evalLoadingId === session.id ? '...' : '⭐ Editar evaluación'}
+                            {deletingEvalId === session.id ? '...' : 'Confirmar'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteEvalConfirmId(null)}
+                            disabled={deletingEvalId === session.id}
+                            className="text-muted-foreground hover:underline disabled:opacity-50"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <Button size="xs" variant="outline" onClick={() => openEdit(session)}>
+                            Editar
                           </Button>
-                        )}
-                      </div>
+                          {session.status === 'completed' && session.hasEvaluation && (
+                            <>
+                              <Button
+                                size="xs"
+                                variant="outline"
+                                disabled={evalLoadingId === session.id}
+                                onClick={() => handleEditEval(session)}
+                              >
+                                {evalLoadingId === session.id ? '...' : '⭐ Editar evaluación'}
+                              </Button>
+                              <Button
+                                size="xs"
+                                variant="outline"
+                                className="text-destructive border-destructive/40 hover:bg-destructive/5 hover:text-destructive"
+                                onClick={() => setDeleteEvalConfirmId(session.id)}
+                              >
+                                ✕ Completado
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

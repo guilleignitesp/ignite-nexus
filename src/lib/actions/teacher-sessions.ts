@@ -167,11 +167,29 @@ export async function finalizeSession(input: {
     .limit(1)
     .maybeSingle()
 
-  if (nextPending && input.nextProjectId) {
-    await supabase
-      .from('sessions')
-      .update({ project_id: input.nextProjectId })
-      .eq('id', (nextPending as { id: string }).id)
+  if (nextPending) {
+    let projectForNextSession: string | null = null
+
+    if (input.nextProjectId) {
+      // Project completed, moving to next project
+      projectForNextSession = input.nextProjectId
+    } else if (!input.projectCompleted) {
+      // Session finished but project not done — continue same project
+      const { data: cur } = await supabase
+        .from('sessions')
+        .select('project_id')
+        .eq('id', input.sessionId)
+        .single()
+      projectForNextSession = (cur as { project_id: string | null } | null)?.project_id ?? null
+    }
+    // If projectCompleted=true and no nextProjectId: final project, leave next session without project
+
+    if (projectForNextSession) {
+      await supabase
+        .from('sessions')
+        .update({ project_id: projectForNextSession })
+        .eq('id', (nextPending as { id: string }).id)
+    }
   }
   // planning_project_log is now created by submitProjectEvaluation
 }
