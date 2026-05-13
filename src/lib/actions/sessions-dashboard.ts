@@ -818,7 +818,7 @@ export async function updateSessionProject(
 
 export async function getGroupProjects(
   groupId: string
-): Promise<{ id: string; name: string }[]> {
+): Promise<{ id: string; name: string; alreadyCompleted: boolean }[]> {
   await assertDashboardAccess()
   const supabase = await createClient()
 
@@ -830,20 +830,37 @@ export async function getGroupProjects(
     .maybeSingle()
 
   if (!planningData) return []
-  const { project_map_id } = planningData as { id: string; project_map_id: string | null }
+  const { id: planningId, project_map_id } = planningData as { id: string; project_map_id: string | null }
   if (!project_map_id) return []
 
-  const { data, error } = await supabase
-    .from('project_map_nodes')
-    .select('projects(id, name)')
-    .eq('map_id', project_map_id)
+  const [nodesResult, logsResult] = await Promise.all([
+    supabase
+      .from('project_map_nodes')
+      .select('projects(id, name)')
+      .eq('map_id', project_map_id),
+    supabase
+      .from('planning_project_log')
+      .select('project_id, project_evaluations(id)')
+      .eq('planning_id', planningId),
+  ])
 
-  if (error) throw new Error(error.message)
+  if (nodesResult.error) throw new Error(nodesResult.error.message)
+
+  type LogWithEval = { project_id: string; project_evaluations: { id: string }[] }
+  const completedProjectIds = new Set<string>(
+    ((logsResult.data ?? []) as unknown as LogWithEval[])
+      .filter((l) => (l.project_evaluations?.length ?? 0) > 0)
+      .map((l) => l.project_id)
+  )
 
   type RawNode = { projects: { id: string; name: string } | null }
-  return ((data ?? []) as unknown as RawNode[])
+  return ((nodesResult.data ?? []) as unknown as RawNode[])
     .filter((n) => n.projects !== null)
-    .map((n) => ({ id: n.projects!.id, name: n.projects!.name }))
+    .map((n) => ({
+      id: n.projects!.id,
+      name: n.projects!.name,
+      alreadyCompleted: completedProjectIds.has(n.projects!.id),
+    }))
 }
 
 // ─── getGroupPermanentAssignments ─────────────────────────────

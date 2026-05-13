@@ -148,7 +148,7 @@ export function GroupDetailClient({ group }: Props) {
   const [editComment, setEditComment] = useState('')
   const [editAttendances, setEditAttendances] = useState<Record<string, boolean>>({})
   const [editStudents, setEditStudents] = useState<{ studentId: string; firstName: string; lastName: string }[]>([])
-  const [editProjects, setEditProjects] = useState<{ id: string; name: string }[]>([])
+  const [editProjects, setEditProjects] = useState<{ id: string; name: string; alreadyCompleted: boolean }[]>([])
   const [editSaving, setEditSaving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
 
@@ -846,9 +846,16 @@ export function GroupDetailClient({ group }: Props) {
                   >
                     <option value="">— Sin proyecto —</option>
                     {editProjects.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
+                      <option key={p.id} value={p.id} style={{ color: p.alreadyCompleted ? 'var(--destructive)' : undefined }}>
+                        {p.alreadyCompleted ? '⚠ ' : ''}{p.name}
+                      </option>
                     ))}
                   </select>
+                  {editProjectId && editProjects.find((p) => p.id === editProjectId)?.alreadyCompleted && (
+                    <p className="mt-1 text-xs text-destructive">
+                      Este proyecto ya fue completado por este grupo
+                    </p>
+                  )}
                 </div>
 
                 {/* Traffic light */}

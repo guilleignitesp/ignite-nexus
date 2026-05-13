@@ -320,45 +320,28 @@ async function buildGroupDetail(g: RawGroup): Promise<GroupDetail> {
   const todaySlotRaw = schedule.find((s) => s.weekday === todayWd) ?? null
   const isClassToday = todaySlotRaw !== null
 
-  let planning: GroupPlanningData | null = null
+  // Extract map data before async fetch (no DB calls needed here)
+  let log: RawProjectLog | null = null
+  let rawMap: RawMap | null = null
+  let nodes: MapNode[] = []
+  let edges: MapEdge[] = []
   if (rawPlanning) {
-    const log = latestLog(rawPlanning.planning_project_log ?? [])
-    const rawMap = rawPlanning.project_maps as RawMap | null
-    const nodes: MapNode[] = (rawMap?.project_map_nodes ?? []).map((n) => ({
+    log = latestLog(rawPlanning.planning_project_log ?? [])
+    rawMap = rawPlanning.project_maps as RawMap | null
+    nodes = (rawMap?.project_map_nodes ?? []).map((n) => ({
       projectId: n.project_id,
       projectName: n.projects?.name ?? '',
       materialType: n.projects?.material_type ?? null,
     }))
-    const edges: MapEdge[] = (rawMap?.project_map_edges ?? []).map((e) => ({
+    edges = (rawMap?.project_map_edges ?? []).map((e) => ({
       fromProjectId: e.from_project_id,
       toProjectId: e.to_project_id,
       percentage: e.percentage ?? null,
       label: e.label ?? null,
     }))
-    const successors = log
-      ? edges
-          .filter((e) => e.fromProjectId === log.project_id)
-          .map((e) => {
-            const node = nodes.find((n) => n.projectId === e.toProjectId)
-            return node ? { projectId: node.projectId, projectName: node.projectName, percentage: e.percentage, label: e.label } : null
-          })
-          .filter((x): x is { projectId: string; projectName: string; percentage: number | null; label: string | null } => x !== null)
-      : []
-
-    planning = {
-      planningId: rawPlanning.id,
-      currentProjectId: log?.project_id ?? null,
-      currentProjectName: log?.projects?.name ?? null,
-      currentLogId: log?.id ?? null,
-      mapId: rawMap?.id ?? null,
-      mapInitialProjectId: rawMap?.initial_project_id ?? null,
-      mapNodes: nodes,
-      mapEdges: edges,
-      successors,
-    }
   }
 
-  const planningId = planning?.planningId ?? null
+  const planningId = rawPlanning?.id ?? null
 
   async function fetchClosestSession(pid: string): Promise<RawTodaySession | null> {
     const sel = `id, session_date, status, traffic_light, teacher_comment, is_consolidated, project_id,
@@ -394,6 +377,41 @@ async function buildGroupDetail(g: RawGroup): Promise<GroupDetail> {
       ])
     : ([null, { data: [], error: null }, { data: [], error: null }] as const)
 
+  // Build projectsWithEvals before constructing successors so completed projects can be filtered out
+  type LogWithEval = { project_id: string; project_evaluations: { id: string }[] }
+  const projectsWithEvals = new Set<string>(
+    ((logsResult.data ?? []) as unknown as LogWithEval[])
+      .filter((l) => (l.project_evaluations?.length ?? 0) > 0)
+      .map((l) => l.project_id)
+  )
+
+  // Build planning with successors filtered to exclude already-completed projects
+  let planning: GroupPlanningData | null = null
+  if (rawPlanning) {
+    const successors = log
+      ? edges
+          .filter((e) => e.fromProjectId === log!.project_id)
+          .map((e) => {
+            const node = nodes.find((n) => n.projectId === e.toProjectId)
+            return node ? { projectId: node.projectId, projectName: node.projectName, percentage: e.percentage, label: e.label } : null
+          })
+          .filter((x): x is { projectId: string; projectName: string; percentage: number | null; label: string | null } => x !== null)
+          .filter((x) => !projectsWithEvals.has(x.projectId))
+      : []
+
+    planning = {
+      planningId: rawPlanning.id,
+      currentProjectId: log?.project_id ?? null,
+      currentProjectName: log?.projects?.name ?? null,
+      currentLogId: log?.id ?? null,
+      mapId: rawMap?.id ?? null,
+      mapInitialProjectId: rawMap?.initial_project_id ?? null,
+      mapNodes: nodes,
+      mapEdges: edges,
+      successors,
+    }
+  }
+
   const closestSession: TodaySession | null = rawClosest
     ? {
         sessionId: rawClosest.id,
@@ -425,16 +443,10 @@ async function buildGroupDetail(g: RawGroup): Promise<GroupDetail> {
             return node ? { projectId: node.projectId, projectName: node.projectName, percentage: e.percentage, label: e.label } : null
           })
           .filter((x): x is { projectId: string; projectName: string; percentage: number | null; label: string | null } => x !== null)
+          .filter((x) => !projectsWithEvals.has(x.projectId))
       : []
     planning = { ...planning, successors: newSuccessors }
   }
-
-  type LogWithEval = { project_id: string; project_evaluations: { id: string }[] }
-  const projectsWithEvals = new Set<string>(
-    ((logsResult.data ?? []) as unknown as LogWithEval[])
-      .filter((l) => (l.project_evaluations?.length ?? 0) > 0)
-      .map((l) => l.project_id)
-  )
 
   // Sessions arrive DESC by date — first occurrence of each project_id is the latest session
   const lastSessionByProject = new Map<string, string>()

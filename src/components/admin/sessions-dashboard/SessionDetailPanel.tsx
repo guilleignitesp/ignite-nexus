@@ -34,7 +34,7 @@ interface Props {
   onClose: () => void
 }
 
-type Project = { id: string; name: string }
+type Project = { id: string; name: string; alreadyCompleted: boolean }
 
 const SESSION_STATUSES = ['pending', 'completed', 'excused'] as const
 
@@ -311,26 +311,33 @@ export function SessionDetailPanel({
             {projectsLoading ? (
               <Skeleton className="h-8 w-full" />
             ) : (
-              <select
-                value={selectedProject}
-                onChange={(e) => handleProjectChange(e.target.value)}
-                disabled={isPending}
-                style={{
-                  width: '100%',
-                  height: '2rem',
-                  borderRadius: '0.5rem',
-                  border: '1px solid var(--border)',
-                  backgroundColor: 'var(--background)',
-                  padding: '0 0.5rem',
-                  fontSize: '0.875rem',
-                  outline: 'none',
-                }}
-              >
-                <option value="">{t('noProject')}</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
+              <>
+                <select
+                  value={selectedProject}
+                  onChange={(e) => handleProjectChange(e.target.value)}
+                  disabled={isPending}
+                  style={{
+                    width: '100%',
+                    height: '2rem',
+                    borderRadius: '0.5rem',
+                    border: '1px solid var(--border)',
+                    backgroundColor: 'var(--background)',
+                    padding: '0 0.5rem',
+                    fontSize: '0.875rem',
+                    outline: 'none',
+                  }}
+                >
+                  <option value="">{t('noProject')}</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.alreadyCompleted ? '⚠ ' : ''}{p.name}</option>
+                  ))}
+                </select>
+                {selectedProject && projects.find((p) => p.id === selectedProject)?.alreadyCompleted && (
+                  <p style={{ fontSize: '0.75rem', color: 'var(--destructive)', marginTop: '0.25rem' }}>
+                    Este proyecto ya fue completado por este grupo
+                  </p>
+                )}
+              </>
             )}
           </section>
 
