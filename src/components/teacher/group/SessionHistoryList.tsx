@@ -197,7 +197,7 @@ export function SessionHistoryList({ sessions, groupId, planningId }: SessionHis
     }
   }
 
-  const CLOSED_STATUSES = new Set(['completed', 'unknown', 'excused'])
+  const CLOSED_STATUSES = new Set(['completed', 'excused'])
   const closed = sessions.filter((s) => CLOSED_STATUSES.has(s.status))
 
   if (closed.length === 0) {
@@ -207,16 +207,20 @@ export function SessionHistoryList({ sessions, groupId, planningId }: SessionHis
   const statusLabel: Record<string, string> = {
     pending:   t('statusPending'),
     completed: t('statusCompleted'),
-    suspended: t('statusSuspended'),
-    holiday:   t('statusHoliday'),
-    unknown:   t('statusUnknown'),
     excused:   t('statusExcused'),
+  }
+
+  const excusedReasonLabel: Record<string, string> = {
+    holiday:       'Día festivo',
+    school_event:  'Evento del colegio',
+    force_majeure: 'Fuerza mayor',
+    vacation:      'Vacaciones',
+    other:         'Otro',
   }
 
   function statusBadgeVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
     switch (status) {
       case 'completed': return 'default'
-      case 'unknown':   return 'secondary'
       case 'excused':   return 'outline'
       default:          return 'secondary'
     }
@@ -259,6 +263,11 @@ export function SessionHistoryList({ sessions, groupId, planningId }: SessionHis
                   >
                     {statusLabel[s.status] ?? s.status}
                   </Badge>
+                  {s.status === 'excused' && s.excusedReason && (
+                    <div className="text-xs text-orange-600 dark:text-orange-400 mt-0.5">
+                      {excusedReasonLabel[s.excusedReason] ?? s.excusedReason}
+                    </div>
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   {s.trafficLight ? (

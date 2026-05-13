@@ -36,13 +36,15 @@ interface Props {
 
 type Project = { id: string; name: string }
 
-const SESSION_STATUSES = [
-  'pending',
-  'completed',
-  'holiday',
-  'suspended',
-  'cancelled',
-] as const
+const SESSION_STATUSES = ['pending', 'completed', 'excused'] as const
+
+const REASON_LABEL: Record<string, string> = {
+  holiday:       'Festivo',
+  school_event:  'Acto escolar',
+  force_majeure: 'Causa mayor',
+  vacation:      'Vacaciones',
+  other:         'Otro',
+}
 
 export function SessionDetailPanel({
   session,
@@ -69,6 +71,9 @@ export function SessionDetailPanel({
 
   // Min teachers
   const [minTeachers, setMinTeachers] = useState(String(session.minTeachersRequired))
+
+  // Excused reason
+  const [excusedReason, setExcusedReason] = useState<string>(session.excusedReason ?? 'holiday')
 
   // Errors
   const [error, setError] = useState<string | null>(null)
@@ -102,13 +107,28 @@ export function SessionDetailPanel({
   }
 
   function handleStatusChange(status: string) {
+    if (status !== 'excused') setExcusedReason('holiday')
     setError(null)
     startTransition(async () => {
       try {
         await updateSessionStatus(
           session.id,
-          status as WeekSession['status']
+          status as 'pending' | 'completed' | 'excused',
+          status === 'excused' ? excusedReason : undefined
         )
+        router.refresh()
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Error')
+      }
+    })
+  }
+
+  function handleExcusedReasonChange(reason: string) {
+    setExcusedReason(reason)
+    setError(null)
+    startTransition(async () => {
+      try {
+        await updateSessionStatus(session.id, 'excused', reason)
         router.refresh()
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Error')
@@ -221,6 +241,9 @@ export function SessionDetailPanel({
           <div style={{ fontSize: '0.85rem', color: 'var(--muted-foreground)', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
             <span>{schoolName}</span>
             <span>{session.date}</span>
+            {session.status === 'excused' && session.excusedReason && (
+              <span>{REASON_LABEL[session.excusedReason] ?? session.excusedReason}</span>
+            )}
             {isLocked && (
               <Badge variant="secondary" style={{ width: 'fit-content' }}>
                 🔒 {t('consolidated')}
@@ -256,6 +279,30 @@ export function SessionDetailPanel({
                 <option key={s} value={s}>{t(`status.${s}`)}</option>
               ))}
             </select>
+            {session.status === 'excused' && (
+              <select
+                value={excusedReason}
+                onChange={(e) => handleExcusedReasonChange(e.target.value)}
+                disabled={isPending}
+                style={{
+                  width: '100%',
+                  height: '2rem',
+                  borderRadius: '0.5rem',
+                  border: '1px solid var(--border)',
+                  backgroundColor: 'var(--background)',
+                  padding: '0 0.5rem',
+                  fontSize: '0.875rem',
+                  outline: 'none',
+                  marginTop: '0.5rem',
+                }}
+              >
+                <option value="holiday">Festivo</option>
+                <option value="school_event">Acto escolar</option>
+                <option value="force_majeure">Causa mayor</option>
+                <option value="vacation">Vacaciones</option>
+                <option value="other">Otro</option>
+              </select>
+            )}
           </section>
 
           {/* Project */}

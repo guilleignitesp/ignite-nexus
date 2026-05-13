@@ -390,42 +390,54 @@ export async function submitProjectEvaluation(input: {
   }
 }
 
-// ─── markSessionUnknown ───────────────────────────────────────────────────
-
-export async function markSessionUnknown(
-  sessionId: string,
-  groupId: string
-): Promise<void> {
-  await assertTeacherOwnsGroup(groupId)
-  const supabase = await createClient()
-  const { error } = await supabase
-    .from('sessions')
-    .update({
-      status: 'unknown',
-      is_consolidated: true,
-      consolidated_at: new Date().toISOString(),
-    })
-    .eq('id', sessionId)
-  if (error) throw new Error(error.message)
-}
-
 // ─── markSessionExcused ───────────────────────────────────────────────────
 
 export async function markSessionExcused(
   sessionId: string,
-  groupId: string
+  groupId: string,
+  planningId: string,
+  reason: string
 ): Promise<void> {
   await assertTeacherOwnsGroup(groupId)
   const supabase = await createClient()
-  const { error } = await supabase
+
+  const [updateResult, currentResult] = await Promise.all([
+    supabase
+      .from('sessions')
+      .update({
+        status: 'excused',
+        excused_reason: reason,
+        is_consolidated: true,
+        consolidated_at: new Date().toISOString(),
+      })
+      .eq('id', sessionId),
+    supabase
+      .from('sessions')
+      .select('project_id')
+      .eq('id', sessionId)
+      .single(),
+  ])
+
+  if (updateResult.error) throw new Error(updateResult.error.message)
+
+  const projectId = (currentResult.data as { project_id: string | null } | null)?.project_id ?? null
+  if (!projectId) return
+
+  const { data: nextPending } = await supabase
     .from('sessions')
-    .update({
-      status: 'excused',
-      is_consolidated: true,
-      consolidated_at: new Date().toISOString(),
-    })
-    .eq('id', sessionId)
-  if (error) throw new Error(error.message)
+    .select('id')
+    .eq('planning_id', planningId)
+    .eq('status', 'pending')
+    .order('session_date', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (nextPending) {
+    await supabase
+      .from('sessions')
+      .update({ project_id: projectId })
+      .eq('id', (nextPending as { id: string }).id)
+  }
 }
 
 // ─── getProjectDetails (carga lazy de info del proyecto activo) ───────────

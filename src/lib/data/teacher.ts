@@ -58,6 +58,7 @@ export interface SessionHistoryItem {
   projectName: string | null
   projectId: string | null
   hasEvaluation: boolean
+  excusedReason: string | null
 }
 
 export interface MapNode {
@@ -178,6 +179,7 @@ type RawHistorySession = {
   is_consolidated: boolean
   project_id: string | null
   projects: { name: string } | null
+  excused_reason: string | null
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -365,7 +367,7 @@ async function buildGroupDetail(g: RawGroup): Promise<GroupDetail> {
       .from('sessions')
       .select(sel)
       .eq('planning_id', pid)
-      .not('status', 'in', '(completed,unknown,excused)')
+      .not('status', 'in', '(completed,excused)')
       .order('session_date', { ascending: true })
       .limit(1)
       .maybeSingle()
@@ -378,11 +380,11 @@ async function buildGroupDetail(g: RawGroup): Promise<GroupDetail> {
         supabase
           .from('sessions')
           .select(`
-            id, session_date, status, traffic_light, teacher_comment, is_consolidated, project_id,
+            id, session_date, status, traffic_light, teacher_comment, is_consolidated, project_id, excused_reason,
             projects(name)
           `)
           .eq('planning_id', planningId)
-          .eq('status', 'completed')
+          .in('status', ['completed', 'excused'])
           .order('session_date', { ascending: false })
           .limit(20),
         supabase
@@ -457,6 +459,7 @@ async function buildGroupDetail(g: RawGroup): Promise<GroupDetail> {
       s.project_id !== null &&
       projectsWithEvals.has(s.project_id) &&
       lastSessionByProject.get(s.project_id) === s.id,
+    excusedReason: s.excused_reason ?? null,
   }))
 
   return {

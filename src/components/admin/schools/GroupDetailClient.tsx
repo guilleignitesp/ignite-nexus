@@ -65,9 +65,7 @@ const WEEKDAY_LABEL: Record<number, string> = {
 const STATUS_COLOR: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-800',
   completed: 'bg-green-100 text-green-800',
-  suspended: 'bg-orange-100 text-orange-800',
-  holiday: 'bg-blue-100 text-blue-800',
-  cancelled: 'bg-gray-100 text-gray-700',
+  excused: 'bg-orange-100 text-orange-800',
 }
 
 type SearchResultItem = {
@@ -144,6 +142,7 @@ export function GroupDetailClient({ group }: Props) {
   // Session edit
   const [editSession, setEditSession] = useState<GroupSession | null>(null)
   const [editStatus, setEditStatus] = useState('')
+  const [editExcusedReason, setEditExcusedReason] = useState('')
   const [editProjectId, setEditProjectId] = useState<string | null>(null)
   const [editTrafficLight, setEditTrafficLight] = useState<string | null>(null)
   const [editComment, setEditComment] = useState('')
@@ -280,6 +279,7 @@ export function GroupDetailClient({ group }: Props) {
   function openEdit(session: GroupSession) {
     setEditSession(session)
     setEditStatus(session.status)
+    setEditExcusedReason(session.excusedReason ?? '')
     setEditProjectId(session.projectId)
     setEditTrafficLight(session.trafficLight)
     setEditComment(session.teacherComment ?? '')
@@ -307,6 +307,7 @@ export function GroupDetailClient({ group }: Props) {
         projectId: editProjectId,
         trafficLight: editTrafficLight,
         teacherComment: editComment.trim() || null,
+        excusedReason: editStatus === 'excused' ? (editExcusedReason || null) : null,
         attendances: editStudents.map((s) => ({
           studentId: s.studentId,
           attended: editAttendances[s.studentId] ?? false,
@@ -810,12 +811,29 @@ export function GroupDetailClient({ group }: Props) {
                     onChange={(e) => setEditStatus(e.target.value)}
                     className="h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm"
                   >
-                    {['pending','completed','suspended','holiday','cancelled','unknown','excused'].map((s) => (
+                    {(['pending', 'completed', 'excused'] as const).map((s) => (
                       <option key={s} value={s}>
                         {tDash(`status.${s}` as Parameters<typeof tDash>[0])}
                       </option>
                     ))}
                   </select>
+                  {editStatus === 'excused' && (
+                    <div className="mt-2 space-y-1">
+                      <Label className="text-xs text-muted-foreground">Motivo</Label>
+                      <select
+                        value={editExcusedReason}
+                        onChange={(e) => setEditExcusedReason(e.target.value)}
+                        className="h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+                      >
+                        <option value="">— Sin especificar —</option>
+                        <option value="holiday">Día festivo</option>
+                        <option value="school_event">Evento del colegio</option>
+                        <option value="force_majeure">Fuerza mayor</option>
+                        <option value="vacation">Vacaciones</option>
+                        <option value="other">Otro</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
 
                 {/* Project */}

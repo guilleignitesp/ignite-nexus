@@ -266,6 +266,7 @@ export async function adminUpdateSession(input: {
   projectId: string | null
   trafficLight: string | null
   teacherComment: string | null
+  excusedReason?: string | null
   attendances: { studentId: string; attended: boolean }[]
 }): Promise<void> {
   await assertSchoolsAccess()
@@ -278,6 +279,7 @@ export async function adminUpdateSession(input: {
       project_id: input.projectId,
       traffic_light: input.trafficLight,
       teacher_comment: input.teacherComment,
+      excused_reason: input.status === 'excused' ? (input.excusedReason ?? null) : null,
     })
     .eq('id', input.sessionId)
   if (updateErr) throw new Error(updateErr.message)

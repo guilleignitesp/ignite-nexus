@@ -67,10 +67,11 @@ function transformSchools(raw: RawSchool[]): School[] {
   return raw.map((school) => {
     const activeGroups = (school.groups ?? []).filter((g) => g.is_active !== false)
 
+    const today = new Date().toISOString().slice(0, 10)
     const uniqueStudents = new Set<string>()
     const groups: Group[] = activeGroups.map((g) => {
       const teachers: GroupTeacher[] = (g.group_assignments ?? [])
-        .filter((a) => a.end_date === null && a.workers)
+        .filter((a) => a.workers && (a.end_date === null || a.end_date >= today))
         .map((a) => a.workers as RawWorker)
 
       const enrollments = (g.group_enrollments ?? []).filter((e) => e.is_active)
@@ -149,6 +150,7 @@ export interface GroupSession {
   isConsolidated: boolean
   trafficLight: string | null
   teacherComment: string | null
+  excusedReason: string | null
   attendances: { studentId: string; attended: boolean }[]
   hasEvaluation: boolean
 }
@@ -211,6 +213,7 @@ type RawGroupSession = {
   is_consolidated: boolean
   traffic_light: string | null
   teacher_comment: string | null
+  excused_reason: string | null
   projects: { id: string; name: string } | null
   session_attendances: { student_id: string; attended: boolean }[]
 }
@@ -255,7 +258,7 @@ export async function getGroupAdminDetail(
     const [sessionsResult, logsResult] = await Promise.all([
       supabase
         .from('sessions')
-        .select('id, session_date, start_time, end_time, status, is_consolidated, traffic_light, teacher_comment, projects(id, name), session_attendances(student_id, attended)')
+        .select('id, session_date, start_time, end_time, status, is_consolidated, traffic_light, teacher_comment, excused_reason, projects(id, name), session_attendances(student_id, attended)')
         .in('planning_id', planningIds)
         .order('session_date', { ascending: false })
         .limit(50),
@@ -296,6 +299,7 @@ export async function getGroupAdminDetail(
         isConsolidated: s.is_consolidated ?? false,
         trafficLight: s.traffic_light,
         teacherComment: s.teacher_comment,
+        excusedReason: s.excused_reason ?? null,
         attendances: (s.session_attendances ?? []).map((a) => ({
           studentId: a.student_id,
           attended: a.attended,
@@ -308,8 +312,9 @@ export async function getGroupAdminDetail(
     })
   }
 
+  const today = new Date().toISOString().slice(0, 10)
   const teachers = (raw.group_assignments ?? [])
-    .filter((a) => a.end_date === null && a.is_active && a.type === 'permanent' && a.workers)
+    .filter((a) => (a.end_date === null || a.end_date >= today) && a.is_active && a.type === 'permanent' && a.workers)
     .map((a) => ({
       assignmentId: a.id,
       workerId: a.workers!.id,

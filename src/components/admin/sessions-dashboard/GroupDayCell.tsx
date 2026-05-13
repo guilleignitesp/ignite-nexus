@@ -14,14 +14,20 @@ interface Props {
   onSessionClick: (session: WeekSession) => void
 }
 
+const REASON_LABEL: Record<string, string> = {
+  holiday:       'Festivo',
+  school_event:  'Acto escolar',
+  force_majeure: 'Causa mayor',
+  vacation:      'Vacaciones',
+  other:         'Otro',
+}
+
 function statusVariant(
   status: WeekSession['status']
 ): 'default' | 'secondary' | 'destructive' | 'outline' {
   switch (status) {
     case 'completed': return 'default'
-    case 'suspended': return 'destructive'
-    case 'cancelled': return 'destructive'
-    case 'holiday':   return 'secondary'
+    case 'excused':   return 'secondary'
     default:          return 'outline'
   }
 }
@@ -87,6 +93,11 @@ export function GroupDayCell({
               <Badge variant={statusVariant(session.status)} style={{ fontSize: '0.6rem', padding: '0 0.25rem' }}>
                 {t(`status.${session.status}`)}
               </Badge>
+              {session.status === 'excused' && session.excusedReason && (
+                <span style={{ fontSize: '0.6rem', color: 'var(--muted-foreground)' }}>
+                  {REASON_LABEL[session.excusedReason] ?? session.excusedReason}
+                </span>
+              )}
               {session.isConsolidated && (
                 <span style={{ fontSize: '0.6rem', color: 'var(--muted-foreground)' }}>🔒</span>
               )}

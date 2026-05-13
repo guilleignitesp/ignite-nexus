@@ -759,14 +759,22 @@ export async function generateGroupSessions(
 
 export async function updateSessionStatus(
   sessionId: string,
-  status: 'pending' | 'completed' | 'suspended' | 'holiday' | 'cancelled'
+  status: 'pending' | 'completed' | 'excused',
+  excusedReason?: string
 ): Promise<void> {
   await assertDashboardAccess()
   const supabase = await createClient()
 
+  const updatePayload: Record<string, unknown> = { status }
+  if (status === 'excused' && excusedReason) {
+    updatePayload.excused_reason = excusedReason
+  } else if (status !== 'excused') {
+    updatePayload.excused_reason = null
+  }
+
   const { error } = await supabase
     .from('sessions')
-    .update({ status })
+    .update(updatePayload)
     .eq('id', sessionId)
 
   if (error) throw new Error(error.message)

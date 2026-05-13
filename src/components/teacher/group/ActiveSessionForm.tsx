@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { FinalizeDialog } from './FinalizeDialog'
-import { saveSession, finalizeSession, getProjectDetails, markSessionUnknown, markSessionExcused } from '@/lib/actions/teacher-sessions'
+import { saveSession, finalizeSession, getProjectDetails, markSessionExcused } from '@/lib/actions/teacher-sessions'
 import { cn } from '@/lib/utils'
 import type { TodaySession, EnrolledStudent } from '@/lib/data/teacher'
 import type { TrafficLight } from '@/types'
@@ -68,9 +68,7 @@ export function ActiveSessionForm({
   const [error, setError] = useState<string | null>(null)
   const [isSaving, startSave] = useTransition()
   const [isFinalizing, startFinalize] = useTransition()
-  const [isMarkingUnknown, startMarkUnknown] = useTransition()
   const [isMarkingExcused, startMarkExcused] = useTransition()
-  const [unknownDialogOpen, setUnknownDialogOpen] = useState(false)
   const [excusedDialogOpen, setExcusedDialogOpen] = useState(false)
 
   function toggleAttendance(studentId: string) {
@@ -125,23 +123,12 @@ export function ActiveSessionForm({
     })
   }
 
-  function handleMarkUnknown() {
+  function handleMarkExcused(reason: string) {
     setError(null)
-    startMarkUnknown(async () => {
-      try {
-        await markSessionUnknown(session.sessionId, groupId)
-        router.refresh()
-      } catch {
-        setError(t('saveError'))
-      }
-    })
-  }
-
-  function handleMarkExcused() {
-    setError(null)
+    setExcusedDialogOpen(false)
     startMarkExcused(async () => {
       try {
-        await markSessionExcused(session.sessionId, groupId)
+        await markSessionExcused(session.sessionId, groupId, planningId, reason)
         router.refresh()
       } catch {
         setError(t('saveError'))
@@ -149,7 +136,7 @@ export function ActiveSessionForm({
     })
   }
 
-  const isPending = isSaving || isFinalizing || isMarkingUnknown || isMarkingExcused
+  const isPending = isSaving || isFinalizing || isMarkingExcused
   const attendanceMap = new Map(attendances.map((a) => [a.studentId, a.attended]))
 
   return (
@@ -283,50 +270,44 @@ export function ActiveSessionForm({
         </div>
 
         <div className="border-t pt-3">
-          {unknownDialogOpen ? (
-            <div className="rounded-md border bg-muted/30 p-3 space-y-2 text-sm">
-              <p className="text-muted-foreground">{t('markUnknownConfirm')}</p>
-              <div className="flex gap-2">
-                <Button size="sm" onClick={handleMarkUnknown} disabled={isPending}>
-                  {t('confirmFinalize')}
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setUnknownDialogOpen(false)} disabled={isPending}>
-                  {t('cancelFinalize')}
-                </Button>
+          {excusedDialogOpen ? (
+            <div className="rounded-md border bg-muted/30 p-3 space-y-3 text-sm">
+              <p className="font-medium">¿Por qué no se realizó la sesión?</p>
+              <div className="grid grid-cols-2 gap-2">
+                {(
+                  [
+                    ['holiday', 'Día festivo'],
+                    ['school_event', 'Evento del colegio'],
+                    ['force_majeure', 'Fuerza mayor'],
+                    ['vacation', 'Vacaciones'],
+                    ['other', 'Otro'],
+                  ] as const
+                ).map(([reason, label]) => (
+                  <Button
+                    key={reason}
+                    size="sm"
+                    variant="outline"
+                    disabled={isPending}
+                    onClick={() => handleMarkExcused(reason)}
+                  >
+                    {label}
+                  </Button>
+                ))}
               </div>
-            </div>
-          ) : excusedDialogOpen ? (
-            <div className="rounded-md border bg-muted/30 p-3 space-y-2 text-sm">
-              <p className="text-muted-foreground">{t('markExcusedConfirm')}</p>
-              <div className="flex gap-2">
-                <Button size="sm" onClick={handleMarkExcused} disabled={isPending}>
-                  {t('confirmFinalize')}
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setExcusedDialogOpen(false)} disabled={isPending}>
-                  {t('cancelFinalize')}
-                </Button>
-              </div>
+              <Button size="sm" variant="ghost" onClick={() => setExcusedDialogOpen(false)} disabled={isPending}>
+                {t('cancelFinalize')}
+              </Button>
             </div>
           ) : (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setUnknownDialogOpen(true)}
-                disabled={isPending}
-              >
-                {t('markUnknownLabel')}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setExcusedDialogOpen(true)}
-                disabled={isPending}
-                className="text-orange-600 border-orange-300 hover:bg-orange-50 hover:text-orange-700 dark:text-orange-400 dark:border-orange-700 dark:hover:bg-orange-950/30"
-              >
-                {t('markExcusedLabel')}
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setExcusedDialogOpen(true)}
+              disabled={isPending}
+              className="text-orange-600 border-orange-300 hover:bg-orange-50 hover:text-orange-700 dark:text-orange-400 dark:border-orange-700 dark:hover:bg-orange-950/30"
+            >
+              No se realizó
+            </Button>
           )}
         </div>
       </div>
