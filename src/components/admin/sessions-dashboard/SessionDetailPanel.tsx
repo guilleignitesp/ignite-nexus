@@ -10,7 +10,6 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { WeekSession, ActiveAssignment } from '@/lib/data/sessions-dashboard'
 import {
@@ -38,13 +37,6 @@ type Project = { id: string; name: string; alreadyCompleted: boolean }
 
 const SESSION_STATUSES = ['pending', 'completed', 'excused'] as const
 
-const REASON_LABEL: Record<string, string> = {
-  holiday:       'Festivo',
-  school_event:  'Acto escolar',
-  force_majeure: 'Causa mayor',
-  vacation:      'Vacaciones',
-  other:         'Otro',
-}
 
 export function SessionDetailPanel({
   session,
@@ -85,8 +77,6 @@ export function SessionDetailPanel({
       .catch(() => setProjects([]))
       .finally(() => setProjectsLoading(false))
   }, [session.groupId])
-
-  const isLocked = session.isConsolidated
 
   const dateAssignments = assignments.filter(
     (a) => a.startDate <= session.date && (a.endDate === null || a.endDate >= session.date)
@@ -242,12 +232,7 @@ export function SessionDetailPanel({
             <span>{schoolName}</span>
             <span>{session.date}</span>
             {session.status === 'excused' && session.excusedReason && (
-              <span>{REASON_LABEL[session.excusedReason] ?? session.excusedReason}</span>
-            )}
-            {isLocked && (
-              <Badge variant="secondary" style={{ width: 'fit-content' }}>
-                🔒 {t('consolidated')}
-              </Badge>
+              <span>{t(`excusedReasons.${session.excusedReason}` as Parameters<typeof t>[0])}</span>
             )}
           </div>
 
@@ -296,11 +281,11 @@ export function SessionDetailPanel({
                   marginTop: '0.5rem',
                 }}
               >
-                <option value="holiday">Festivo</option>
-                <option value="school_event">Acto escolar</option>
-                <option value="force_majeure">Causa mayor</option>
-                <option value="vacation">Vacaciones</option>
-                <option value="other">Otro</option>
+                <option value="holiday">{t('excusedReasons.holiday')}</option>
+                <option value="school_event">{t('excusedReasons.school_event')}</option>
+                <option value="force_majeure">{t('excusedReasons.force_majeure')}</option>
+                <option value="vacation">{t('excusedReasons.vacation')}</option>
+                <option value="other">{t('excusedReasons.other')}</option>
               </select>
             )}
           </section>

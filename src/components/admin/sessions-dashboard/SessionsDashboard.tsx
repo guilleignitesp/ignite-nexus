@@ -45,6 +45,19 @@ export function SessionsDashboard({
 
   const [selectedSession, setSelectedSession] = useState<SelectedSession | null>(null)
   const [auditOpen, setAuditOpen] = useState(false)
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null)
+
+  const teams = Array.from(
+    new Map(
+      schools
+        .filter((s) => s.teamId)
+        .map((s) => [s.teamId!, { id: s.teamId!, name: s.teamName ?? s.teamId! }])
+    ).values()
+  )
+
+  const filteredSchools = selectedTeamId
+    ? schools.filter((s) => s.teamId === selectedTeamId)
+    : schools
 
   const workerNames = new Map<string, string>()
   for (const w of workers) {
@@ -83,9 +96,38 @@ export function SessionsDashboard({
         </Button>
       </div>
 
+      {/* Team filter */}
+      {teams.length > 1 && (
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            onClick={() => setSelectedTeamId(null)}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              selectedTeamId === null
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-muted-foreground hover:bg-muted/80'
+            }`}
+          >
+            Todos
+          </button>
+          {teams.map((team) => (
+            <button
+              key={team.id}
+              onClick={() => setSelectedTeamId(team.id)}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                selectedTeamId === team.id
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+              }`}
+            >
+              {team.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* The grid */}
       <WeekGrid
-        schools={schools}
+        schools={filteredSchools}
         sessions={sessions}
         assignments={assignments}
         workerNames={workerNames}

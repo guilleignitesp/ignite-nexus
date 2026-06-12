@@ -1,36 +1,78 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# IGNITE NEXUS
 
-## Getting Started
+Platform for managing after-school tech education programs. Covers session scheduling, project-based learning progression, teacher management, student XP tracking, and administrative oversight.
 
-First, run the development server:
+## Stack
+
+- **Framework**: Next.js 16.2.3 (App Router, React Server Components, Server Actions)
+- **Database / Auth**: Supabase (PostgreSQL + Auth)
+- **Styling**: Tailwind CSS v4 + shadcn/ui
+- **i18n**: next-intl (es / en / ca)
+- **Visualization**: @xyflow/react (project maps)
+
+## User Roles
+
+| Role | Access |
+|------|--------|
+| Worker (teacher) | `/teacher/*` — session management, project evaluation, attendance |
+| Admin | `/admin/*` — school/group management, sessions dashboard, student profiles (module-gated) |
+| Super Admin | All admin modules + settings, school year management |
+
+## Running Locally
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment Variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Variable | Required | Description |
+|----------|---------|-------------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anon/public key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Service role key (server only, never exposed to client) |
 
-## Learn More
+Copy `.env.local.example` to `.env.local` and fill in values from your Supabase project settings.
 
-To learn more about Next.js, take a look at the following resources:
+## Build
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run build   # type-check + build
+npm run lint    # ESLint
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Key Docs
 
-## Deploy on Vercel
+- [Architecture](docs/architecture.md) — auth model, routing, data patterns
+- [Database](docs/database.md) — all tables, columns, relationships
+- [Actions](docs/actions.md) — all server actions, auth requirements
+- [Status System](docs/status-system.md) — session statuses, excused reasons, XP rules
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Project Structure
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+src/
+├── app/[locale]/           Next.js routes (admin, teacher, student)
+├── components/
+│   ├── admin/              Admin-only components
+│   ├── teacher/            Teacher-facing components
+│   └── ui/                 shadcn base components
+├── lib/
+│   ├── actions/            Server actions (mutations)
+│   ├── data/               Data fetch functions (reads)
+│   ├── auth.ts             getUserProfile, requireAuth guards
+│   ├── supabase-server.ts  Authenticated server client
+│   └── supabase-admin.ts   Service role client (auth user ops only)
+├── messages/               i18n JSON files (es, en, ca)
+└── types/index.ts          Shared TypeScript types
+```
+
+## Development Notes
+
+- Server actions call `getUserProfile()` at the top for auth — do not skip this
+- Use `createClient()` from `supabase-server.ts` for all mutations, not the browser client
+- `createAdminClient()` is only for `auth.admin.*` operations (create user, ban, reset password)
+- All session status values must be: `'pending' | 'completed' | 'excused'` — legacy values (`suspended`, `holiday`, `cancelled`) exist only in old DB rows pending migration

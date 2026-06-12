@@ -869,6 +869,7 @@ export async function getGroupPermanentAssignments(
   groupId: string,
   asOfDate?: string
 ): Promise<{ id: string; workerId: string; firstName: string; lastName: string }[]> {
+  await assertDashboardAccess()
   const supabase = await createClient()
 
   const base = supabase
@@ -1121,6 +1122,7 @@ export async function searchWorkersForAssignment(
   groupId: string,
   asOfDate?: string
 ): Promise<{ id: string; firstName: string; lastName: string; conflict: boolean }[]> {
+  await assertDashboardAccess()
   const supabase = await createClient()
 
   // Run in parallel: group schedule + assigned workers + all active workers + group's school team

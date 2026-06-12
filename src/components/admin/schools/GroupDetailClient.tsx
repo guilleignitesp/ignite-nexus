@@ -826,11 +826,11 @@ export function GroupDetailClient({ group }: Props) {
                         className="h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm"
                       >
                         <option value="">— Sin especificar —</option>
-                        <option value="holiday">Día festivo</option>
-                        <option value="school_event">Evento del colegio</option>
-                        <option value="force_majeure">Fuerza mayor</option>
-                        <option value="vacation">Vacaciones</option>
-                        <option value="other">Otro</option>
+                        <option value="holiday">{tDash('excusedReasons.holiday')}</option>
+                        <option value="school_event">{tDash('excusedReasons.school_event')}</option>
+                        <option value="force_majeure">{tDash('excusedReasons.force_majeure')}</option>
+                        <option value="vacation">{tDash('excusedReasons.vacation')}</option>
+                        <option value="other">{tDash('excusedReasons.other')}</option>
                       </select>
                     </div>
                   )}

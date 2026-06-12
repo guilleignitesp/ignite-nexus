@@ -43,6 +43,7 @@ export function ActiveSessionForm({
   currentProjectName,
 }: ActiveSessionFormProps) {
   const t = useTranslations('teacherGroup')
+  const tDash = useTranslations('sessionsDashboard')
   const router = useRouter()
 
   const [projectDetails, setProjectDetails] = useState<ProjectDetails | null>(null)
@@ -274,15 +275,7 @@ export function ActiveSessionForm({
             <div className="rounded-md border bg-muted/30 p-3 space-y-3 text-sm">
               <p className="font-medium">¿Por qué no se realizó la sesión?</p>
               <div className="grid grid-cols-2 gap-2">
-                {(
-                  [
-                    ['holiday', 'Día festivo'],
-                    ['school_event', 'Evento del colegio'],
-                    ['force_majeure', 'Fuerza mayor'],
-                    ['vacation', 'Vacaciones'],
-                    ['other', 'Otro'],
-                  ] as const
-                ).map(([reason, label]) => (
+                {(['holiday', 'school_event', 'force_majeure', 'vacation', 'other'] as const).map((reason) => (
                   <Button
                     key={reason}
                     size="sm"
@@ -290,7 +283,7 @@ export function ActiveSessionForm({
                     disabled={isPending}
                     onClick={() => handleMarkExcused(reason)}
                   >
-                    {label}
+                    {tDash(`excusedReasons.${reason}`)}
                   </Button>
                 ))}
               </div>

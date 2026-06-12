@@ -352,7 +352,7 @@ export async function submitProjectEvaluation(input: {
           ev.skills.map((sk) => ({
             evaluation_id: evaluationId,
             skill_id: sk.skillId,
-            xp_awarded: sk.xpAwarded,
+            xp_awarded: Math.max(0, sk.xpAwarded),
           }))
         )
         if (seErr) throw new Error(seErr.message)
@@ -362,7 +362,7 @@ export async function submitProjectEvaluation(input: {
     for (const sk of ev.skills) {
       const key = `${ev.studentId}:${sk.skillId}`
       const existing = xpMap.get(key)
-      const newAcademic = (existing?.academic_xp ?? 0) + sk.xpAwarded
+      const newAcademic = Math.max(0, (existing?.academic_xp ?? 0) + sk.xpAwarded)
       xpUpserts.push({
         student_id: ev.studentId,
         skill_id: sk.skillId,

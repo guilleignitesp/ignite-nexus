@@ -2,7 +2,6 @@
 
 import { updateTag } from 'next/cache'
 import { createClient } from '@/lib/supabase-server'
-import { createClient as createAnonClient } from '@supabase/supabase-js'
 import { getUserProfile } from '@/lib/auth'
 
 export interface ProjectFullDetails {
@@ -31,10 +30,9 @@ type RawPFD = {
 export async function getProjectFullDetails(
   projectId: string
 ): Promise<ProjectFullDetails | null> {
-  const supabase = createAnonClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const profile = await getUserProfile()
+  if (!profile?.workerId) throw new Error('Unauthorized')
+  const supabase = await createClient()
   const { data, error } = await supabase
     .from('projects')
     .select(

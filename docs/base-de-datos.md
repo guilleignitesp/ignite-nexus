@@ -112,6 +112,7 @@ Alumnos del programa. Actualmente sin vinculación a `auth.users` (los alumnos n
 | `first_name` | text NOT NULL | Nombre |
 | `last_name` | text NOT NULL | Apellidos |
 | `status` | text CHECK ('active','inactive') default 'active' | Baja activa/inactiva |
+| `xp_multiplier_pct` | smallint NOT NULL default 100 CHECK (20-200) | Multiplicador de XP del alumno (100 = estándar, configurable por admin) |
 | `created_at` | timestamptz NOT NULL default now() | — |
 
 ---
@@ -316,6 +317,8 @@ Historial de proyectos asignados dentro de una planificación.
 | `validated_at` | timestamptz | — |
 | `status` | text CHECK ('pending','validated','modified') default 'pending' | Estado del log |
 
+**Riesgo de condición de carrera**: No hay unique constraint en `(planning_id, project_id)` — inserts concurrentes pueden crear entradas duplicadas para el mismo proyecto dentro de una planificación.
+
 ---
 
 ### Sección 3: Sesiones
@@ -334,7 +337,8 @@ Sesiones de clase. Son la unidad mínima de registro pedagógico.
 | `start_time` | time NOT NULL | Hora de inicio |
 | `end_time` | time NOT NULL | Hora de fin |
 | `min_teachers_required` | smallint NOT NULL default 1 CHECK > 0 | Mínimo de profesores necesarios |
-| `status` | text CHECK ('pending','completed','suspended','holiday') default 'pending' | Estado |
+| `status` | text CHECK ('pending','completed','excused') default 'pending' | Estado |
+| `excused_reason` | text CHECK ('holiday','school_event','force_majeure','vacation','other') | Razón de la sesión excusada; solo presente cuando `status = 'excused'` |
 | `teacher_comment` | text | Comentario del profesor |
 | `traffic_light` | text CHECK ('green','yellow','orange','red') | Valoración del profesor |
 | `is_consolidated` | boolean NOT NULL default false | Si los datos son definitivos |
@@ -409,6 +413,8 @@ XP acumulado por alumno por habilidad. Una fila = alumno × habilidad.
 | `updated_at` | timestamptz NOT NULL default now() | Última actualización |
 
 **Índice único:** `(student_id, skill_id)`
+
+**Riesgo de condición de carrera**: Las actualizaciones de XP usan un patrón read-modify-write sin bloqueo optimista. Envíos de evaluaciones concurrentes pueden solaparse y perder actualizaciones. `submitProjectEvaluation` aplica `Math.max(0, xpAwarded)` para garantizar que el XP nunca sea negativo.
 
 ---
 

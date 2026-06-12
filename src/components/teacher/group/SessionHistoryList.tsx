@@ -175,6 +175,7 @@ type EvalState = {
 
 export function SessionHistoryList({ sessions, groupId, planningId }: SessionHistoryListProps) {
   const t = useTranslations('teacherGroup')
+  const tDash = useTranslations('sessionsDashboard')
   const router = useRouter()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [evalState, setEvalState] = useState<EvalState | null>(null)
@@ -210,15 +211,7 @@ export function SessionHistoryList({ sessions, groupId, planningId }: SessionHis
     excused:   t('statusExcused'),
   }
 
-  const excusedReasonLabel: Record<string, string> = {
-    holiday:       'Día festivo',
-    school_event:  'Evento del colegio',
-    force_majeure: 'Fuerza mayor',
-    vacation:      'Vacaciones',
-    other:         'Otro',
-  }
-
-  function statusBadgeVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
+function statusBadgeVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
     switch (status) {
       case 'completed': return 'default'
       case 'excused':   return 'outline'
@@ -265,7 +258,7 @@ export function SessionHistoryList({ sessions, groupId, planningId }: SessionHis
                   </Badge>
                   {s.status === 'excused' && s.excusedReason && (
                     <div className="text-xs text-orange-600 dark:text-orange-400 mt-0.5">
-                      {excusedReasonLabel[s.excusedReason] ?? s.excusedReason}
+                      {tDash(`excusedReasons.${s.excusedReason}` as Parameters<typeof tDash>[0])}
                     </div>
                   )}
                 </td>

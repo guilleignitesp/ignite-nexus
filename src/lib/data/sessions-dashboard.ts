@@ -1,5 +1,3 @@
-import { unstable_cache } from 'next/cache'
-import { createClient as createPublicClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase-server'
 
 // ─── Types ────────────────────────────────────────────────────
@@ -7,6 +5,8 @@ import { createClient } from '@/lib/supabase-server'
 export interface DashboardSchool {
   id: string
   name: string
+  teamId: string | null
+  teamName: string | null
   groups: DashboardGroup[]
 }
 
@@ -24,7 +24,7 @@ export interface WeekSession {
   startTime: string
   endTime: string
   minTeachersRequired: number
-  status: 'pending' | 'completed' | 'suspended' | 'holiday' | 'cancelled' | 'excused'
+  status: 'pending' | 'completed' | 'excused'
   isConsolidated: boolean
   projectId: string | null
   projectName: string | null
@@ -70,6 +70,8 @@ type RawDashboardGroup = {
 type RawDashboardSchool = {
   id: string
   name: string
+  team_id: string | null
+  teams: { id: string; name: string } | null
   groups: RawDashboardGroup[]
 }
 
@@ -106,47 +108,42 @@ type RawAssignment = {
   workers: { id: string; first_name: string; last_name: string; status: string } | null
 }
 
-// ─── Q1: Schools (cached, public) ────────────────────────────
+// ─── Q1: Schools (authenticated) ─────────────────────────────
 
-export const getSchoolsForDashboard = unstable_cache(
-  async (): Promise<DashboardSchool[]> => {
-    const supabase = createPublicClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+export async function getSchoolsForDashboard(): Promise<DashboardSchool[]> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('schools')
+    .select(
+      'id, name, team_id, teams(id, name), groups(id, name, is_active, group_schedule(weekday, start_time, end_time))'
     )
+    .eq('is_active', true)
+    .order('name')
 
-    const { data, error } = await supabase
-      .from('schools')
-      .select(
-        'id, name, groups(id, name, is_active, group_schedule(weekday, start_time, end_time))'
-      )
-      .eq('is_active', true)
-      .order('name')
+  if (error) throw new Error(error.message)
 
-    if (error) throw new Error(error.message)
+  const raw = (data ?? []) as unknown as RawDashboardSchool[]
 
-    const raw = (data ?? []) as unknown as RawDashboardSchool[]
-
-    return raw.map((school) => ({
-      id: school.id,
-      name: school.name,
-      groups: (school.groups ?? [])
-        .filter((g) => g.is_active !== false)
-        .map((g) => ({
-          id: g.id,
-          name: g.name,
-          is_active: g.is_active,
-          schedule: (g.group_schedule ?? []).map((s) => ({
-            weekday: s.weekday,
-            startTime: s.start_time,
-            endTime: s.end_time,
-          })),
+  return raw.map((school) => ({
+    id: school.id,
+    name: school.name,
+    teamId: school.team_id ?? null,
+    teamName: school.teams?.name ?? null,
+    groups: (school.groups ?? [])
+      .filter((g) => g.is_active !== false)
+      .map((g) => ({
+        id: g.id,
+        name: g.name,
+        is_active: g.is_active,
+        schedule: (g.group_schedule ?? []).map((s) => ({
+          weekday: s.weekday,
+          startTime: s.start_time,
+          endTime: s.end_time,
         })),
-    }))
-  },
-  ['schools'],
-  { tags: ['schools'], revalidate: false }
-)
+      })),
+  }))
+}
 
 // ─── Q2: Week sessions (live, authenticated) ─────────────────
 

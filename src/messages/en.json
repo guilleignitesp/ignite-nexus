@@ -801,7 +801,14 @@
     "detailSubstitutes": "Substitutes",
     "noSubstitutes": "No substitutes",
     "absent": "Absent",
-    "save": "Save"
+    "save": "Save",
+    "excusedReasons": {
+      "holiday": "Día festivo",
+      "school_event": "Evento del colegio",
+      "force_majeure": "Fuerza mayor",
+      "vacation": "Vacaciones",
+      "other": "Otro motivo"
+    }
   },
   "groupDetail": {
     "backToSchools": "Schools and groups",

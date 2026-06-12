@@ -188,7 +188,7 @@ ignite-nexus/
 │   │   │   ├── teachers.ts        # createWorker, toggleWorkerStatus, upsertModulePermission, setSuperAdmin
 │   │   │   ├── students.ts        # updateStudent, toggleStudentStatus, updateEvaluationMultiplier
 │   │   │   ├── enrollments.ts     # bulkEnroll, bulkDeactivate
-│   │   │   ├── teacher-sessions.ts # createTodaySession, saveSession, finalizeSession, getProjectSkillsForEvaluation, submitProjectEvaluation, updateProjectEvaluation, markSessionUnknown, markSessionExcused, getProjectDetails, getSessionEvaluation, getSessionAttendances, getAttitudeActions, recordAttitudeAction
+│   │   │   ├── teacher-sessions.ts # createTodaySession, saveSession, finalizeSession, getProjectSkillsForEvaluation, submitProjectEvaluation, updateProjectEvaluation, markSessionExcused, getProjectDetails, getSessionEvaluation, getSessionAttendances, getAttitudeActions, recordAttitudeAction
 │   │   │   ├── timesheets.ts      # recordTimesheet
 │   │   │   ├── absences.ts        # requestAbsence, approveAbsence, rejectAbsence
 │   │   │   ├── global-resources.ts # createGlobalResource, updateGlobalResource, toggleGlobalResourceStatus
@@ -500,6 +500,8 @@ const visibleItems = items.filter(
 )
 ```
 
+**Brecha actual**: `can_edit` lo lee la UI para mostrar/ocultar botones, pero las Server Actions solo comprueban `can_view` o `isSuperAdmin`. La restricción a nivel de edición no está implementada en el servidor.
+
 ### 4.5 Funciones SQL de seguridad
 
 Definidas como `SECURITY DEFINER` para evitar recursión en RLS:
@@ -778,6 +780,53 @@ Ejemplo: **Admin hace clic en "Ver perfil" de un alumno**.
 **Total de queries Supabase para cargar la página:** 2 (getUserProfile + getStudentProfile)  
 **Para la mutación:** 2 (getUserProfile [cacheado] + update)  
 **Re-render tras mutación:** mismas 2 queries del paso 5-6
+
+---
+
+## 8.1 Flujos de dominio clave
+
+### Ciclo de vida de una sesión
+
+```
+Admin genera sesiones
+  → sessions row (status='pending', planning_id, session_date)
+
+Profesor abre la página del grupo
+  → busca la sesión de hoy (createTodaySession si no existe)
+  → profesor guarda progreso → session actualizada (project_id, asistencias)
+  → profesor finaliza → status='completed', is_consolidated=true
+                      → siguiente sesión pending hereda project_id
+
+Admin marca como excusada
+  → status='excused', excused_reason asignado
+  → is_consolidated=true (bloqueada para ediciones del profesor)
+```
+
+### Flujo de XP
+
+```
+Profesor envía evaluación de proyecto
+  → project_evaluations upsert (uno por alumno)
+  → skill_evaluations insert (uno por habilidad por alumno)
+  → student_xp upsert (academic_xp += Math.max(0, awarded))
+
+Admin registra acción actitudinal
+  → attitude_logs insert
+  → student_xp upsert (social_xp / civic_xp += awarded)
+```
+
+### Progresión de proyecto
+
+```
+planning (group_id)
+  └── planning_project_log: proyecto actual + estado de validación
+  └── project_map: nodos (proyectos) + aristas (prerrequisitos)
+
+Cuando el profesor completa un proyecto:
+  → planning_project_log marcado como completado
+  → siguiente proyecto en el mapa heredado por la próxima sesión pending
+  → proyectos sucesores filtrados para excluir los ya completados
+```
 
 ---
 
