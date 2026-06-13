@@ -61,14 +61,14 @@ export function TodaySessionSection({
     session.sessionDate > todayStr &&
     session.attendances.length === 0
 
-  // For future sessions, find the schedule slot matching that weekday
-  // JS getDay() Mon=1…Fri=5 matches DB weekday 1…5 for weekdays
-  const futureSlot = isFuturePending && session
-    ? groupSchedule.find((s) => s.weekday === new Date(session.sessionDate + 'T12:00:00').getDay()) ?? null
+  // For future sessions: match schedule by weekday, fall back to todaySlot, then to session's own stored times
+  const futureSlot: ScheduleSlot | null = isFuturePending && session
+    ? (groupSchedule.find((s) => s.weekday === new Date(session.sessionDate + 'T12:00:00').getDay()) ?? todaySlot)
     : null
 
-  // The slot to use when starting the session
-  const startSlot = isFuturePending ? futureSlot : todaySlot
+  const startSlot: ScheduleSlot | null = isFuturePending
+    ? (futureSlot ?? (session ? { weekday: 0, startTime: session.startTime, endTime: session.endTime } : null))
+    : todaySlot
 
   const formattedOverdueDate = sessionDate
     ? new Date(sessionDate + 'T12:00:00').toLocaleDateString(locale, {
@@ -112,21 +112,15 @@ export function TodaySessionSection({
     return (
       <div className="rounded-lg border p-6 flex flex-col items-start gap-3">
         <p className="text-sm font-medium">{t('sessionDateLabel', { date: formattedStartDate })}</p>
-        {futureSlot ? (
-          <>
-            <p className="text-sm text-muted-foreground">
-              {futureSlot.startTime.slice(0, 5)}–{futureSlot.endTime.slice(0, 5)}
-            </p>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button onClick={handleStart} disabled={isPending}>
-              {isPending ? t('starting') : t('startSession')}
-            </Button>
-          </>
-        ) : (
+        {startSlot && (
           <p className="text-sm text-muted-foreground">
-            {t('nextSessionInfo', { date: formattedStartDate })}
+            {startSlot.startTime.slice(0, 5)}–{startSlot.endTime.slice(0, 5)}
           </p>
         )}
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <Button onClick={handleStart} disabled={isPending}>
+          {isPending ? t('starting') : t('startSession')}
+        </Button>
       </div>
     )
   }

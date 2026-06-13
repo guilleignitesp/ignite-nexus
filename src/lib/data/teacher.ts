@@ -39,6 +39,8 @@ export interface EnrolledStudent {
 export interface TodaySession {
   sessionId: string
   sessionDate: string
+  startTime: string
+  endTime: string
   status: SessionStatus
   trafficLight: TrafficLight | null
   teacherComment: string | null
@@ -161,6 +163,8 @@ type RawAssignment = {
 type RawTodaySession = {
   id: string
   session_date: string
+  start_time: string
+  end_time: string
   status: string
   traffic_light: string | null
   teacher_comment: string | null
@@ -344,7 +348,7 @@ async function buildGroupDetail(g: RawGroup): Promise<GroupDetail> {
   const planningId = rawPlanning?.id ?? null
 
   async function fetchClosestSession(pid: string): Promise<RawTodaySession | null> {
-    const sel = `id, session_date, status, traffic_light, teacher_comment, is_consolidated, project_id,
+    const sel = `id, session_date, start_time, end_time, status, traffic_light, teacher_comment, is_consolidated, project_id,
       session_attendances(student_id, attended), projects(name)`
     const { data } = await supabase
       .from('sessions')
@@ -416,6 +420,8 @@ async function buildGroupDetail(g: RawGroup): Promise<GroupDetail> {
     ? {
         sessionId: rawClosest.id,
         sessionDate: rawClosest.session_date,
+        startTime: rawClosest.start_time,
+        endTime: rawClosest.end_time,
         status: rawClosest.status as SessionStatus,
         trafficLight: rawClosest.traffic_light as TrafficLight | null,
         teacherComment: rawClosest.teacher_comment,
