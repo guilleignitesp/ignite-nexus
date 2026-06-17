@@ -1,9 +1,33 @@
-// Layout del alumno: aplica el tema gamificado
-// requireAuth se añadirá cuando se implemente la autenticación de alumnos (post-lanzamiento)
-export default function StudentLayout({ children }: { children: React.ReactNode }) {
+import { Figtree, Fraunces } from 'next/font/google'
+import { requireStudent } from '@/lib/auth'
+
+const figtree = Figtree({
+  subsets: ['latin'],
+  variable: '--font-figtree',
+  display: 'swap',
+})
+
+const fraunces = Fraunces({
+  subsets: ['latin'],
+  variable: '--font-fraunces',
+  display: 'swap',
+  axes: ['opsz'],
+})
+
+export default async function StudentLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode
+  params: Promise<{ locale: string }>
+}) {
+  const { locale } = await params
+  await requireStudent(locale)
   return (
-    // .theme-student activa los colores gamificados definidos en globals.css
-    <div className="theme-student min-h-screen">
+    <div
+      className={`${figtree.variable} ${fraunces.variable} theme-student min-h-screen`}
+      style={{ fontFamily: 'var(--font-figtree), system-ui, sans-serif' }}
+    >
       {children}
     </div>
   )

@@ -47,7 +47,25 @@ export const getUserProfile = cache(async (): Promise<UserProfile | null> => {
     }
   }
 
-  // TODO: student auth (actualmente los alumnos no tienen cuenta en auth.users)
+  // Check if user is a student
+  const { data: student } = await supabase
+    .from('students')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('status', 'active')
+    .maybeSingle()
+
+  if (student) {
+    return {
+      id: user.id,
+      role: 'student',
+      studentId: (student as unknown as { id: string }).id,
+      hasAdminAccess: false,
+      isSuperAdmin: false,
+      adminModules: [],
+    }
+  }
+
   return null
 })
 
@@ -72,6 +90,12 @@ export async function requireAuth(locale: string): Promise<UserProfile> {
 export async function requireWorker(locale: string): Promise<UserProfile> {
   const profile = await requireAuth(locale)
   if (profile.role !== 'worker') redirect(`/${locale}/login`)
+  return profile
+}
+
+export async function requireStudent(locale: string): Promise<UserProfile> {
+  const profile = await requireAuth(locale)
+  if (profile.role !== 'student') redirect(`/${locale}/login`)
   return profile
 }
 

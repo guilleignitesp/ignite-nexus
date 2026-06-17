@@ -97,6 +97,7 @@ export interface StudentProfile {
   last_name: string
   status: 'active' | 'inactive'
   created_at: string
+  user_id: string | null
   group_enrollments: GroupEnrollment[]
   student_xp: StudentXPEntry[]
   project_evaluations: ProjectEvaluation[]
@@ -151,7 +152,7 @@ export async function getStudentProfile(
   const { data, error } = await supabase
     .from('students')
     .select(`
-      id, first_name, last_name, status, created_at,
+      id, first_name, last_name, status, created_at, user_id,
       group_enrollments(
         id, is_active, enrolled_at, left_at,
         groups(id, name, schools(name), school_years(name))

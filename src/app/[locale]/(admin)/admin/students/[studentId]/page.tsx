@@ -11,6 +11,7 @@ import { CurrentProject } from '@/components/admin/students/CurrentProject'
 import { CompletedProjects } from '@/components/admin/students/CompletedProjects'
 import { XPTrajectory } from '@/components/admin/students/XPTrajectory'
 import { AttitudeLog } from '@/components/admin/students/AttitudeLog'
+import { StudentPortalAccess } from '@/components/admin/students/StudentPortalAccess'
 
 export default async function StudentProfilePage({
   params,
@@ -70,6 +71,9 @@ export default async function StudentProfilePage({
 
       {/* Attitude log */}
       <AttitudeLog logs={student.attitude_logs} locale={locale} />
+
+      {/* Portal access */}
+      <StudentPortalAccess studentId={student.id} hasAccess={!!student.user_id} />
     </div>
   )
 }

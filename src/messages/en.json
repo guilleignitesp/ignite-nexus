@@ -335,6 +335,27 @@
     "colSession": "Session date",
     "colRecordedAt": "Recorded"
   },
+  "studentPortalAccess": {
+    "title": "Acceso al portal",
+    "createAccess": "Crear acceso",
+    "creating": "Creando...",
+    "credentialsNote": "Guarda estas credenciales — la contraseña no se puede recuperar después",
+    "emailLabel": "Email",
+    "passwordLabel": "Contraseña",
+    "copy": "Copiar",
+    "copied": "¡Copiado!",
+    "close": "Cerrar",
+    "changePassword": "Cambiar contraseña",
+    "newPasswordLabel": "Nueva contraseña",
+    "generateRandom": "Generar aleatoria",
+    "savePassword": "Guardar",
+    "saving": "Guardando...",
+    "passwordChanged": "Contraseña cambiada. Guárdala:",
+    "loadingEmail": "Cargando...",
+    "errorCreate": "Error al crear el acceso",
+    "errorChange": "Error al cambiar la contraseña",
+    "cancel": "Cancelar"
+  },
   "projects": {
     "pageTitle": "Project bank",
     "pageDescription": "Manage the pedagogical project catalogue.",
