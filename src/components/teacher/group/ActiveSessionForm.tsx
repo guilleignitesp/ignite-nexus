@@ -297,7 +297,7 @@ export function ActiveSessionForm({
               size="sm"
               onClick={() => setExcusedDialogOpen(true)}
               disabled={isPending}
-              className="text-orange-600 border-orange-300 hover:bg-orange-50 hover:text-orange-700 dark:text-orange-400 dark:border-orange-700 dark:hover:bg-orange-950/30"
+              style={{ color: '#C0392B', background: 'rgba(220,38,38,0.08)', borderColor: 'rgba(220,38,38,0.20)' }}
             >
               No se realizó
             </Button>

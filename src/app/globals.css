@@ -101,6 +101,39 @@
   --sidebar-ring: var(--brand-sky);
 }
 
+/* ─── Teacher theme ──────────────────────────────────────────────── */
+.theme-teacher {
+  --tt-navy:      #1E3A5F;
+  --tt-blue:      #3E6FA8;
+  --tt-sky:       #2596BE;
+  --tt-amber:     #FBB03B;
+  --tt-text:      #0F1C2E;
+  --tt-text-mid:  #2D4A6B;
+  --tt-muted:     #6B8BA4;
+  --tt-card:      rgba(255,255,255,0.85);
+  --tt-border:    rgba(30,58,95,0.10);
+  --tt-shadow:    0 2px 12px rgba(30,58,95,0.08);
+  --tt-shadow-lg: 0 8px 32px rgba(30,58,95,0.14);
+  --tt-radius:    20px;
+  --background: 220 35% 97%;
+  --foreground: 213 50% 12%;
+  --card: 0 0% 100%;
+  --primary: 213 43% 45%;
+  --border: 213 25% 88%;
+  --ring: 199 70% 45%;
+  --muted: 213 25% 93%;
+  --muted-foreground: 213 25% 50%;
+}
+
+.theme-teacher {
+  min-height: 100dvh;
+  font-family: var(--font-figtree), 'Figtree', system-ui, sans-serif;
+  background:
+    radial-gradient(ellipse 80% 50% at 10% 0%, rgba(251,176,59,0.07) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 100%, rgba(62,111,168,0.07) 0%, transparent 55%),
+    linear-gradient(160deg, #F7F3EC 0%, #F5F8FD 50%, #F2F6FB 100%);
+}
+
 /* === Tema alumno: gamificado === */
 /* Se activa añadiendo la clase .theme-student al <html> */
 .theme-student {

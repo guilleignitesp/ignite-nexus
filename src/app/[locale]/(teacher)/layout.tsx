@@ -13,7 +13,7 @@ export default async function TeacherLayout({
   const profile = await requireWorker(locale)
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="theme-teacher min-h-screen flex flex-col">
       <TeacherNav
         locale={locale}
         hasAdminAccess={profile.hasAdminAccess}

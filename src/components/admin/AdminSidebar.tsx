@@ -41,6 +41,28 @@ interface AdminSidebarProps {
   isSuperAdmin: boolean
 }
 
+function LogoFull() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <svg viewBox="0 0 48 48" height="30" aria-hidden style={{ display: 'block', flexShrink: 0 }}>
+        <g transform="translate(24,24)">
+          <path d="M-16-16 L-10-16 M-16-16 L-16-10" stroke="#2596BE" strokeWidth="1.5" fill="none"/>
+          <path d="M16 16 L10 16 M16 16 L16 10" stroke="#2596BE" strokeWidth="1.5" fill="none"/>
+          <path d="M-16 16 L-10 16 M-16 16 L-16 10" stroke="#7CB8F5" strokeWidth="1.5" fill="none"/>
+          <path d="M16-16 L10-16 M16-16 L16-10" stroke="#7CB8F5" strokeWidth="1.5" fill="none"/>
+        </g>
+        <g transform="translate(24.4,22.3) scale(.85)">
+          <path d="M-3.2-15 L3.2-14 L6.4 4.6 L.8 4.6 L-.8 18.4 L-7.2-2.3 L-1.6-2.3Z" fill="#FBB03B" stroke="#FBB03B" strokeWidth="1.5" strokeLinejoin="round"/>
+        </g>
+      </svg>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 0, lineHeight: 1 }}>
+        <span style={{ fontFamily: 'var(--font-figtree), Figtree, system-ui, sans-serif', fontWeight: 900, fontSize: 18, letterSpacing: '-0.5px', color: '#3E6FA8' }}>IGNITE</span>
+        <span style={{ fontFamily: 'var(--font-figtree), Figtree, system-ui, sans-serif', fontWeight: 500, fontSize: 18, letterSpacing: '-0.5px', color: '#2596BE', fontStyle: 'italic', marginLeft: 1 }}>NEXUS</span>
+      </div>
+    </div>
+  )
+}
+
 export function AdminSidebar({ locale, adminModules, isSuperAdmin }: AdminSidebarProps) {
   const t = useTranslations('admin')
   const pathname = usePathname()
@@ -87,9 +109,9 @@ export function AdminSidebar({ locale, adminModules, isSuperAdmin }: AdminSideba
   return (
     <Sidebar>
       <SidebarHeader className="px-4 py-3">
-        <span className="text-lg font-bold tracking-tight text-primary">
-          IGNITE NEXUS
-        </span>
+        <Link href={`/${locale}/admin/dashboard`} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center' }}>
+          <LogoFull />
+        </Link>
       </SidebarHeader>
 
       <SidebarContent>
@@ -192,6 +214,25 @@ export function AdminSidebar({ locale, adminModules, isSuperAdmin }: AdminSideba
       </SidebarContent>
 
       <SidebarFooter className="px-2 pb-3">
+        <div style={{ padding: '4px 6px 8px' }}>
+          <Link
+            href={`/${locale}/teacher/home`}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '6px 12px', borderRadius: 20,
+              fontSize: 12, fontWeight: 700,
+              color: '#92650A',
+              background: 'rgba(251,176,59,0.10)',
+              border: '1px solid rgba(251,176,59,0.25)',
+              textDecoration: 'none',
+            }}
+          >
+            <svg width="9" height="14" viewBox="7 2 16 31" fill="none">
+              <path d="M13.3 3.2 L18.7 4.1 L21.4 19.9 L16.7 19.9 L15.3 31.6 L9.9 14 L14.6 14Z" fill="#FBB03B"/>
+            </svg>
+            Panel profesor
+          </Link>
+        </div>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton render={<Link href={`/${locale}/login`} />}>

@@ -5,11 +5,8 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
 import { getAttitudeActions, recordAttitudeAction } from '@/lib/actions/teacher-sessions'
-import { cn } from '@/lib/utils'
 
 interface AttitudeAction {
   id: string
@@ -101,111 +98,293 @@ export function AttitudeModal({ open, onClose, students, sessionId }: AttitudeMo
     setSelectedActionId(null)
   }
 
+  const isPositive = (impactData?.xpAwarded ?? 0) >= 0
+
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent showCloseButton={false} className="max-w-4xl w-full max-h-[85vh] flex flex-col gap-4">
-        <DialogTitle>Actitud</DialogTitle>
+      <style>{`
+        @keyframes shrink3s { from { width: 100% } to { width: 0% } }
+      `}</style>
+      <DialogContent
+        showCloseButton={false}
+        className="max-w-4xl w-full max-h-[85vh] p-0 border-0 shadow-2xl rounded-2xl overflow-hidden"
+      >
+        {/* Hidden title for accessibility */}
+        <DialogTitle className="sr-only">Registrar actitud</DialogTitle>
 
+        {/* ── Step 1: Select ─────────────────────────────────────────────── */}
         {step === 'select' && (
-          <>
+          <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '85vh' }}>
+            {/* Header */}
+            <div style={{
+              background: 'linear-gradient(135deg, #3E6FA8 0%, #2596BE 100%)',
+              padding: '20px 28px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              flexShrink: 0,
+            }}>
+              <svg width="14" height="22" viewBox="7 2 16 31" fill="none">
+                <path d="M13.3 3.2 L18.7 4.1 L21.4 19.9 L16.7 19.9 L15.3 31.6 L9.9 14 L14.6 14Z" fill="#FBB03B"/>
+              </svg>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.7)' }}>
+                  Ignite Nexus
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#fff' }}>
+                  Registrar actitud
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
             {loadingActions ? (
-              <p className="text-sm text-muted-foreground text-center py-8">Cargando...</p>
+              <div style={{ padding: '48px 28px', textAlign: 'center', color: '#7A92A8', fontSize: 14 }}>
+                Cargando...
+              </div>
             ) : (
-              <div className="flex flex-col md:flex-row gap-6 overflow-auto flex-1 min-h-0">
-                {/* Students */}
-                <div className="flex-1 space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Alumno</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {students.map((s) => (
-                      <button
-                        key={s.studentId}
-                        type="button"
-                        onClick={() => setSelectedStudentId(s.studentId === selectedStudentId ? null : s.studentId)}
-                        disabled={isSubmitting}
-                        className={cn(
-                          'rounded-md border p-3 text-sm text-left transition-colors cursor-pointer',
-                          selectedStudentId === s.studentId
-                            ? 'border-primary bg-primary/5 font-medium'
-                            : 'border-input hover:bg-muted/40'
-                        )}
-                      >
-                        {s.firstName} {s.lastName}
-                      </button>
-                    ))}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: 0,
+                flex: 1,
+                overflow: 'hidden',
+              }}>
+                {/* Left — Students */}
+                <div style={{
+                  padding: '20px 24px',
+                  borderRight: '1px solid rgba(62,111,168,0.12)',
+                  overflowY: 'auto',
+                }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase' as const, color: '#7A92A8', marginBottom: 14 }}>
+                    Alumno
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    {students.map((s) => {
+                      const isSelected = selectedStudentId === s.studentId
+                      return (
+                        <button
+                          key={s.studentId}
+                          type="button"
+                          onClick={() => setSelectedStudentId(isSelected ? null : s.studentId)}
+                          disabled={isSubmitting}
+                          style={{
+                            borderRadius: 10,
+                            padding: '10px 14px',
+                            border: '1px solid rgba(62,111,168,0.15)',
+                            fontSize: 14,
+                            fontWeight: isSelected ? 700 : 400,
+                            textAlign: 'left' as const,
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                            background: isSelected
+                              ? 'linear-gradient(135deg, #3E6FA8, #2596BE)'
+                              : 'rgba(62,111,168,0.07)',
+                            color: isSelected ? '#fff' : '#1E2D3D',
+                          }}
+                        >
+                          {s.firstName} {s.lastName}
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
 
-                {/* Actions */}
-                <div className="flex-1 space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Acción</p>
-                  <div className="flex flex-col gap-2">
-                    {actions.map((a) => (
-                      <button
-                        key={a.id}
-                        type="button"
-                        onClick={() => setSelectedActionId(a.id === selectedActionId ? null : a.id)}
-                        disabled={isSubmitting}
-                        className={cn(
-                          'rounded-md border p-3 text-sm text-left transition-colors cursor-pointer flex items-center justify-between gap-2',
-                          selectedActionId === a.id
-                            ? a.xp_value >= 0
-                              ? 'border-green-500 bg-green-50 dark:bg-green-950/20'
-                              : 'border-red-500 bg-red-50 dark:bg-red-950/20'
-                            : 'border-input hover:bg-muted/40'
-                        )}
-                      >
-                        <div className="space-y-0.5">
-                          <span className="font-medium">{a.name_es}</span>
-                          {a.description && (
-                            <p className="text-xs text-muted-foreground">{a.description}</p>
-                          )}
-                        </div>
-                        <span className={cn(
-                          'text-sm font-bold shrink-0',
-                          a.xp_value >= 0 ? 'text-green-600' : 'text-red-600'
-                        )}>
-                          {a.xp_value >= 0 ? '+' : ''}{a.xp_value} XP
-                        </span>
-                      </button>
-                    ))}
+                {/* Right — Actions */}
+                <div style={{
+                  padding: '20px 24px',
+                  overflowY: 'auto',
+                  background: 'rgba(240,245,251,0.5)',
+                }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase' as const, color: '#7A92A8', marginBottom: 14 }}>
+                    Acción
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                    {actions.map((a) => {
+                      const isSelected = selectedActionId === a.id
+                      const positive = a.xp_value >= 0
+                      return (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => setSelectedActionId(isSelected ? null : a.id)}
+                          disabled={isSubmitting}
+                          style={{
+                            borderRadius: 10,
+                            padding: '12px 16px',
+                            marginBottom: 8,
+                            border: isSelected ? '1.5px solid #3E6FA8' : '1px solid rgba(62,111,168,0.15)',
+                            background: isSelected ? 'rgba(62,111,168,0.12)' : 'rgba(255,255,255,0.8)',
+                            textAlign: 'left' as const,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 10,
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: '#1E2D3D' }}>{a.name_es}</div>
+                            {a.description && (
+                              <div style={{ fontSize: 12, color: '#7A92A8', marginTop: 2 }}>{a.description}</div>
+                            )}
+                          </div>
+                          <span style={{
+                            background: positive ? '#dcfce7' : '#fee2e2',
+                            color: positive ? '#16a34a' : '#dc2626',
+                            borderRadius: 20,
+                            padding: '2px 10px',
+                            fontSize: 12,
+                            fontWeight: 800,
+                            flexShrink: 0,
+                          }}>
+                            {positive ? '+' : ''}{a.xp_value} XP
+                          </span>
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
               </div>
             )}
 
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {/* Error */}
+            {error && (
+              <div style={{ padding: '0 24px', color: '#dc2626', fontSize: 13 }}>{error}</div>
+            )}
 
-            <DialogFooter>
-              <Button variant="outline" onClick={onClose} disabled={isSubmitting}>Cerrar</Button>
-              <Button
+            {/* Footer */}
+            <div style={{
+              padding: '16px 24px',
+              borderTop: '1px solid rgba(62,111,168,0.10)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 10,
+              background: '#fff',
+              flexShrink: 0,
+            }}>
+              <button
+                onClick={onClose}
+                disabled={isSubmitting}
+                style={{
+                  padding: '8px 18px',
+                  borderRadius: 10,
+                  border: '1px solid rgba(62,111,168,0.25)',
+                  background: 'transparent',
+                  color: '#3E5068',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Cerrar
+              </button>
+              <button
                 onClick={handleConfirm}
                 disabled={!selectedStudentId || !selectedActionId || isSubmitting}
+                style={{
+                  padding: '8px 22px',
+                  borderRadius: 10,
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #FBB03B 0%, #F59E0B 100%)',
+                  color: '#1E2D3D',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  opacity: (!selectedStudentId || !selectedActionId || isSubmitting) ? 0.4 : 1,
+                  transition: 'opacity 0.15s ease',
+                }}
               >
                 {isSubmitting ? 'Registrando...' : 'Confirmar'}
-              </Button>
-            </DialogFooter>
-          </>
+              </button>
+            </div>
+          </div>
         )}
 
+        {/* ── Step 2: Impact splash ───────────────────────────────────────── */}
         {step === 'impact' && impactData && (
-          <>
-            <div className="flex flex-col items-center justify-center flex-1 gap-5 py-6">
-              <p className="text-2xl font-bold text-center">{impactData.studentName}</p>
-              <p className="text-base text-muted-foreground text-center">{impactData.actionName}</p>
-              <p className={cn(
-                'text-6xl font-extrabold',
-                impactData.xpAwarded >= 0 ? 'text-green-500' : 'text-red-500'
-              )}>
-                {impactData.xpAwarded >= 0 ? '+' : ''}{impactData.xpAwarded} XP
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {impactData.previousTotalXp} → <span className="font-semibold text-foreground">{impactData.newTotalXp}</span> XP total
-              </p>
+          <div style={{
+            minHeight: 400,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '48px 32px',
+            background: isPositive
+              ? 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)'
+              : 'linear-gradient(135deg, #fff1f2 0%, #fee2e2 100%)',
+            textAlign: 'center',
+            position: 'relative',
+            overflow: 'hidden',
+          }}>
+            {/* Large decorative bolt */}
+            <svg style={{ position: 'absolute', opacity: 0.06, width: 300, height: 300 }} viewBox="7 2 16 31">
+              <path d="M13.3 3.2 L18.7 4.1 L21.4 19.9 L16.7 19.9 L15.3 31.6 L9.9 14 L14.6 14Z"
+                fill={isPositive ? '#16a34a' : '#dc2626'}/>
+            </svg>
+
+            {/* XP value */}
+            <div style={{
+              fontSize: 'clamp(80px, 18vw, 140px)',
+              fontWeight: 900,
+              lineHeight: 1,
+              color: isPositive ? '#16a34a' : '#dc2626',
+              fontVariantNumeric: 'tabular-nums',
+              position: 'relative',
+              zIndex: 1,
+            }}>
+              {isPositive ? '+' : ''}{impactData.xpAwarded}
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={dismissImpact}>Siguiente</Button>
-            </DialogFooter>
-          </>
+            <div style={{ fontSize: 18, fontWeight: 700, color: isPositive ? '#15803d' : '#b91c1c', marginTop: 8, position: 'relative', zIndex: 1 }}>
+              XP
+            </div>
+
+            {/* Student name */}
+            <div style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 700, color: '#1E2D3D', marginTop: 24, position: 'relative', zIndex: 1 }}>
+              {impactData.studentName}
+            </div>
+
+            {/* Action name */}
+            <div style={{ fontSize: 16, color: '#3E5068', marginTop: 8, maxWidth: 400, position: 'relative', zIndex: 1 }}>
+              {impactData.actionName}
+            </div>
+
+            {/* XP total */}
+            <div style={{ marginTop: 24, fontSize: 14, color: '#7A92A8', position: 'relative', zIndex: 1 }}>
+              {impactData.previousTotalXp} → <strong style={{ color: '#1E2D3D' }}>{impactData.newTotalXp} XP</strong>
+            </div>
+
+            {/* Auto-dismiss progress bar */}
+            <div style={{ marginTop: 32, width: '100%', maxWidth: 200, height: 3, background: 'rgba(0,0,0,0.08)', borderRadius: 2, position: 'relative', zIndex: 1 }}>
+              <div style={{
+                height: '100%',
+                background: isPositive ? '#16a34a' : '#dc2626',
+                borderRadius: 2,
+                animation: 'shrink3s 3s linear forwards',
+              }} />
+            </div>
+
+            {/* Next button */}
+            <button
+              onClick={dismissImpact}
+              style={{
+                marginTop: 20,
+                padding: '8px 22px',
+                borderRadius: 10,
+                border: `1px solid ${isPositive ? 'rgba(22,163,74,0.3)' : 'rgba(220,38,38,0.3)'}`,
+                background: 'transparent',
+                color: isPositive ? '#15803d' : '#b91c1c',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+                position: 'relative',
+                zIndex: 1,
+              }}
+            >
+              Siguiente →
+            </button>
+          </div>
         )}
       </DialogContent>
     </Dialog>

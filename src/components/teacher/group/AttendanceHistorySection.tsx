@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from 'react'
 import { useTranslations } from 'next-intl'
-import { Button } from '@/components/ui/button'
 import { getSessionAttendances } from '@/lib/actions/teacher-sessions'
 import type { SessionHistoryItem, EnrolledStudent } from '@/lib/data/teacher'
 
@@ -35,7 +34,6 @@ export function AttendanceHistorySection({
     setError(null)
     startTransition(async () => {
       try {
-        // Carga asistencias de las últimas 10 sesiones completadas en paralelo
         const targets = completedSessions.slice(0, 10)
         const results = await Promise.all(
           targets.map((s) => getSessionAttendances(s.sessionId, groupId))
@@ -69,57 +67,94 @@ export function AttendanceHistorySection({
   }
 
   if (completedSessions.length === 0) {
-    return <p className="text-sm text-muted-foreground">{t('noAttendanceHistory')}</p>
+    return <p style={{ fontSize: 13, color: '#8BA3BC', padding: '4px 0' }}>{t('noAttendanceHistory')}</p>
   }
 
   if (data === null) {
     return (
-      <div className="space-y-2">
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        <Button variant="outline" size="sm" onClick={handleLoad} disabled={isPending}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
+        {error && <p style={{ fontSize: 13, color: '#C0392B' }}>{error}</p>}
+        <button
+          onClick={handleLoad}
+          disabled={isPending}
+          style={{
+            padding: '8px 18px', borderRadius: 10, fontSize: 13, fontWeight: 700,
+            background: 'rgba(62,111,168,0.08)', border: '1.5px solid rgba(62,111,168,0.18)',
+            color: '#2D4A6B', cursor: isPending ? 'not-allowed' : 'pointer',
+            opacity: isPending ? 0.6 : 1,
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={e => { if (!isPending) e.currentTarget.style.background = 'rgba(62,111,168,0.14)' }}
+          onMouseLeave={e => { if (!isPending) e.currentTarget.style.background = 'rgba(62,111,168,0.08)' }}
+        >
           {isPending ? t('loading') : t('loadAttendances')}
-        </Button>
+        </button>
       </div>
     )
   }
 
   if (data.length === 0) {
-    return <p className="text-sm text-muted-foreground">{t('noAttendanceHistory')}</p>
+    return <p style={{ fontSize: 13, color: '#8BA3BC', padding: '4px 0' }}>{t('noAttendanceHistory')}</p>
   }
 
   return (
-    <div className="space-y-4">
-      {data.map((entry) => (
-        <div key={entry.sessionId} className="rounded-lg border p-4 space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium">
-              {new Date(entry.sessionDate).toLocaleDateString()}
-            </p>
-            <span className="text-sm text-muted-foreground">
-              {t('attendedCount', {
-                attended: entry.present.length,
-                total: entry.present.length + entry.absent.length,
-              })}
-            </span>
+    <section style={{
+      background: '#FEFCF8',
+      borderRadius: 20,
+      border: '1px solid rgba(62,111,168,0.08)',
+      overflow: 'hidden',
+    }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+        {data.map((entry, idx) => (
+          <div
+            key={entry.sessionId}
+            style={{
+              padding: '16px 20px',
+              borderBottom: idx < data.length - 1 ? '1px solid rgba(62,111,168,0.07)' : 'none',
+            }}
+          >
+            {/* Row header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#0F1C2E' }}>
+                {new Date(entry.sessionDate).toLocaleDateString()}
+              </span>
+              <span style={{
+                fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+                background: 'rgba(62,111,168,0.08)', color: '#3E6FA8',
+              }}>
+                {t('attendedCount', {
+                  attended: entry.present.length,
+                  total: entry.present.length + entry.absent.length,
+                })}
+              </span>
+            </div>
+
+            {/* Absent */}
+            {entry.absent.length > 0 && (
+              <div style={{ marginBottom: 6 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: '#8BA3BC', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 3 }}>
+                  {t('absentLabel')}
+                </p>
+                <p style={{ fontSize: 13, color: '#C0735A', fontWeight: 500 }}>
+                  {entry.absent.join(', ')}
+                </p>
+              </div>
+            )}
+
+            {/* Present */}
+            {entry.present.length > 0 && (
+              <div>
+                <p style={{ fontSize: 11, fontWeight: 700, color: '#8BA3BC', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 3 }}>
+                  {t('presentLabel')}
+                </p>
+                <p style={{ fontSize: 13, color: '#4A6580', fontWeight: 500 }}>
+                  {entry.present.join(', ')}
+                </p>
+              </div>
+            )}
           </div>
-          {entry.absent.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">{t('absentLabel')}</p>
-              <p className="text-sm text-destructive/80">
-                {entry.absent.join(', ')}
-              </p>
-            </div>
-          )}
-          {entry.present.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">{t('presentLabel')}</p>
-              <p className="text-sm text-muted-foreground">
-                {entry.present.join(', ')}
-              </p>
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+    </section>
   )
 }

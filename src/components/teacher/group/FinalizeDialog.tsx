@@ -98,7 +98,13 @@ export function FinalizeDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogTrigger render={<Button variant="default" disabled={isPending} />}>
+        <DialogTrigger render={
+          <Button
+            variant="outline"
+            disabled={isPending}
+            style={{ color: '#0F1C2E', borderColor: 'rgba(30,58,95,0.25)', background: 'transparent' }}
+          />
+        }>
           {t('finalize')}
         </DialogTrigger>
 

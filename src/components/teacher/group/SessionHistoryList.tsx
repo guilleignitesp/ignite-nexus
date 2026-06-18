@@ -3,10 +3,6 @@
 import { useState, useEffect, useTransition, Fragment } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
-import { cn } from '@/lib/utils'
 import { saveSession, getSessionAttendances, getSessionEvaluation } from '@/lib/actions/teacher-sessions'
 import type { SessionHistoryItem } from '@/lib/data/teacher'
 import type { TrafficLight } from '@/types'
@@ -15,17 +11,17 @@ import { EvaluationModal } from './EvaluationModal'
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TRAFFIC_COLOR: Record<string, string> = {
-  green:  'bg-green-500',
-  yellow: 'bg-yellow-400',
-  orange: 'bg-orange-500',
-  red:    'bg-red-500',
+  green:  '#4CAF7D',
+  yellow: '#FBB03B',
+  orange: '#F59E0B',
+  red:    '#E57373',
 }
 
-const TRAFFIC_OPTIONS: { value: TrafficLight; colorClass: string; hoverClass: string }[] = [
-  { value: 'green',  colorClass: 'bg-green-500',  hoverClass: 'hover:bg-green-600' },
-  { value: 'yellow', colorClass: 'bg-yellow-400', hoverClass: 'hover:bg-yellow-500' },
-  { value: 'orange', colorClass: 'bg-orange-500', hoverClass: 'hover:bg-orange-600' },
-  { value: 'red',    colorClass: 'bg-red-500',    hoverClass: 'hover:bg-red-600' },
+const TRAFFIC_OPTIONS: { value: TrafficLight; color: string }[] = [
+  { value: 'green',  color: '#4CAF7D' },
+  { value: 'yellow', color: '#FBB03B' },
+  { value: 'orange', color: '#F59E0B' },
+  { value: 'red',    color: '#E57373' },
 ]
 
 // ─── Inline edit panel ────────────────────────────────────────────────────────
@@ -78,65 +74,89 @@ function InlineEditPanel({ session, groupId, onClose, onSaved }: InlineEditPanel
   }
 
   return (
-    <div className="border-t bg-muted/20 p-4 space-y-4">
+    <div style={{
+      borderTop: '1px solid rgba(62,111,168,0.08)',
+      background: 'rgba(240,246,255,0.5)',
+      padding: '18px 20px',
+      display: 'flex', flexDirection: 'column', gap: 16,
+    }}>
       {/* Semáforo */}
-      <div className="space-y-2">
-        <p className="text-sm font-medium">{t('trafficLightLabel')}</p>
-        <div className="flex gap-2">
-          {TRAFFIC_OPTIONS.map(({ value, colorClass, hoverClass }) => (
+      <div>
+        <p style={{ fontSize: 12, fontWeight: 700, color: '#4A6580', marginBottom: 8 }}>{t('trafficLightLabel')}</p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {TRAFFIC_OPTIONS.map(({ value, color }) => (
             <button
               key={value}
               type="button"
               onClick={() => setTraffic(value)}
-              className={cn(
-                'h-8 w-8 rounded-full transition-all',
-                colorClass,
-                hoverClass,
-                traffic === value
-                  ? 'ring-2 ring-offset-2 ring-foreground scale-110'
-                  : 'opacity-60'
-              )}
+              style={{
+                width: 28, height: 28, borderRadius: '50%',
+                background: color,
+                border: traffic === value ? `3px solid rgba(0,0,0,0.25)` : '2px solid transparent',
+                outline: traffic === value ? `2px solid ${color}` : 'none',
+                outlineOffset: 2,
+                transform: traffic === value ? 'scale(1.15)' : 'scale(0.9)',
+                opacity: traffic === null || traffic === value ? 1 : 0.55,
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
             />
           ))}
         </div>
       </div>
 
       {/* Comentario */}
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium">{t('commentLabel')}</label>
+      <div>
+        <label style={{ fontSize: 12, fontWeight: 700, color: '#4A6580', display: 'block', marginBottom: 6 }}>
+          {t('commentLabel')}
+        </label>
         <textarea
           value={comment}
           onChange={(e) => setComment(e.target.value)}
           placeholder={t('commentPlaceholder')}
           disabled={isSaving}
           rows={2}
-          className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+          style={{
+            width: '100%', borderRadius: 10,
+            border: '1px solid rgba(62,111,168,0.18)',
+            background: '#fff',
+            padding: '8px 12px', fontSize: 13,
+            resize: 'none', outline: 'none',
+            color: '#0F1C2E',
+            boxSizing: 'border-box',
+          }}
         />
       </div>
 
       {/* Asistencia */}
       <div>
-        <p className="mb-2 text-sm font-medium">{t('attendanceTitle')}</p>
+        <p style={{ fontSize: 12, fontWeight: 700, color: '#4A6580', marginBottom: 8 }}>{t('attendanceTitle')}</p>
         {loading ? (
-          <div className="space-y-1">
-            <Skeleton className="h-7 w-full" />
-            <Skeleton className="h-7 w-3/4" />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {[1, 2].map(i => (
+              <div key={i} style={{ height: 28, borderRadius: 8, background: 'rgba(62,111,168,0.06)', width: i === 2 ? '60%' : '100%' }} />
+            ))}
           </div>
         ) : (
-          <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 192, overflowY: 'auto' }}>
             {attendances.map((a) => (
               <label
                 key={a.studentId}
-                className="flex items-center gap-3 cursor-pointer rounded-md px-2 py-1 hover:bg-muted/40 select-none"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  cursor: 'pointer', borderRadius: 8,
+                  padding: '5px 8px',
+                  userSelect: 'none',
+                }}
               >
                 <input
                   type="checkbox"
                   checked={a.attended}
                   onChange={() => toggleAttendance(a.studentId)}
                   disabled={isSaving}
-                  className="h-4 w-4 rounded"
+                  style={{ width: 15, height: 15, accentColor: '#3E6FA8', cursor: 'pointer' }}
                 />
-                <span className="text-sm">
+                <span style={{ fontSize: 13, color: '#2D4A6B' }}>
                   {a.lastName}, {a.firstName}
                 </span>
               </label>
@@ -145,15 +165,32 @@ function InlineEditPanel({ session, groupId, onClose, onSaved }: InlineEditPanel
         )}
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p style={{ fontSize: 13, color: '#C0392B' }}>{error}</p>}
 
-      <div className="flex items-center gap-2">
-        <Button size="sm" onClick={handleSave} disabled={isSaving || loading}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button
+          onClick={handleSave}
+          disabled={isSaving || loading}
+          style={{
+            padding: '7px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700,
+            background: 'rgba(62,111,168,0.10)', border: '1.5px solid rgba(62,111,168,0.22)',
+            color: '#2D4A6B', cursor: isSaving || loading ? 'not-allowed' : 'pointer',
+            opacity: isSaving || loading ? 0.5 : 1,
+          }}
+        >
           {isSaving ? t('saving') : t('save')}
-        </Button>
-        <Button size="sm" variant="outline" onClick={onClose} disabled={isSaving}>
+        </button>
+        <button
+          onClick={onClose}
+          disabled={isSaving}
+          style={{
+            padding: '7px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700,
+            background: 'transparent', border: '1px solid rgba(62,111,168,0.15)',
+            color: '#8BA3BC', cursor: isSaving ? 'not-allowed' : 'pointer',
+          }}
+        >
           {t('closeEdit')}
-        </Button>
+        </button>
       </div>
     </div>
   )
@@ -202,7 +239,9 @@ export function SessionHistoryList({ sessions, groupId, planningId }: SessionHis
   const closed = sessions.filter((s) => CLOSED_STATUSES.has(s.status))
 
   if (closed.length === 0) {
-    return <p className="text-sm text-muted-foreground">{t('noSessions')}</p>
+    return (
+      <p style={{ fontSize: 13, color: '#8BA3BC', padding: '4px 0' }}>{t('noSessions')}</p>
+    )
   }
 
   const statusLabel: Record<string, string> = {
@@ -211,131 +250,158 @@ export function SessionHistoryList({ sessions, groupId, planningId }: SessionHis
     excused:   t('statusExcused'),
   }
 
-function statusBadgeVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
+  function statusBadgeStyle(status: string): React.CSSProperties {
     switch (status) {
-      case 'completed': return 'default'
-      case 'excused':   return 'outline'
-      default:          return 'secondary'
+      case 'completed': return { background: 'rgba(62,111,168,0.10)', color: '#2D4A6B' }
+      case 'excused':   return { background: 'rgba(251,176,59,0.10)', color: '#92650A' }
+      default:          return { background: 'rgba(62,111,168,0.06)', color: '#8BA3BC' }
     }
   }
 
   return (
     <>
-    <div className="rounded-lg border overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b text-left text-xs text-muted-foreground">
-            <th className="px-4 py-3 font-medium">{t('colDate')}</th>
-            <th className="px-4 py-3 font-medium hidden sm:table-cell">{t('colProject')}</th>
-            <th className="px-4 py-3 font-medium">{t('colStatus')}</th>
-            <th className="px-4 py-3 font-medium">{t('colTraffic')}</th>
-            <th className="px-4 py-3 font-medium hidden md:table-cell">{t('colComment')}</th>
-            <th className="px-4 py-3 font-medium" />
-          </tr>
-        </thead>
-        <tbody>
-          {closed.map((s) => (
-            <Fragment key={s.sessionId}>
-              <tr
-                className={cn('border-b', editingId === s.sessionId && 'bg-muted/20')}
-                style={s.hasEvaluation ? { borderLeft: '3px solid var(--primary)' } : undefined}
-              >
-                <td className="px-4 py-3 tabular-nums whitespace-nowrap">
-                  {new Date(s.sessionDate).toLocaleDateString()}
-                </td>
-                <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">
-                  {s.projectName ?? '—'}
-                  {s.hasEvaluation && (
-                    <span style={{ fontSize: '0.6rem', marginLeft: '0.375rem', padding: '0.1rem 0.375rem', borderRadius: '9999px', background: 'var(--primary)', color: 'var(--primary-foreground)', fontWeight: 600 }}>✓ Completado</span>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  <Badge
-                    variant={statusBadgeVariant(s.status)}
-                    className={s.status === 'excused' ? 'border-orange-400 text-orange-600 dark:text-orange-400' : undefined}
-                  >
-                    {statusLabel[s.status] ?? s.status}
-                  </Badge>
-                  {s.status === 'excused' && s.excusedReason && (
-                    <div className="text-xs text-orange-600 dark:text-orange-400 mt-0.5">
-                      {tDash(`excusedReasons.${s.excusedReason}` as Parameters<typeof tDash>[0])}
-                    </div>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  {s.trafficLight ? (
-                    <span
-                      className={`inline-block h-3 w-3 rounded-full ${TRAFFIC_COLOR[s.trafficLight]}`}
-                    />
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-muted-foreground text-xs hidden md:table-cell max-w-xs truncate">
-                  {s.teacherComment ?? '—'}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center">
-                    <Button
-                      size="xs"
-                      variant={editingId === s.sessionId ? 'secondary' : 'ghost'}
-                      onClick={() =>
-                        setEditingId(editingId === s.sessionId ? null : s.sessionId)
-                      }
-                    >
-                      {t('editSession')}
-                    </Button>
-                    {s.status === 'completed' && s.hasEvaluation && (
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        disabled={evalLoadingId === s.sessionId}
-                        onClick={() => handleEditEval(s)}
-                      >
-                        {evalLoadingId === s.sessionId ? '...' : <><span className="hidden sm:inline">⭐ Editar evaluación</span><span className="sm:hidden">⭐ Eval</span></>}
-                      </Button>
-                    )}
-                  </div>
-                </td>
+      <section style={{
+        background: '#FAFCFF',
+        borderRadius: 20,
+        border: '1px solid rgba(62,111,168,0.10)',
+        boxShadow: '0 1px 6px rgba(30,58,95,0.04)',
+        overflow: 'hidden',
+      }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid rgba(62,111,168,0.08)', textAlign: 'left' }}>
+                {[t('colDate'), t('colProject'), t('colStatus'), t('colTraffic'), t('colComment'), ''].map((col, i) => (
+                  <th key={i} style={{
+                    padding: '12px 16px', fontSize: 11, fontWeight: 700,
+                    color: '#8BA3BC', textTransform: 'uppercase', letterSpacing: '0.5px',
+                    display: i === 1 ? undefined : i === 4 ? undefined : undefined,
+                  }}>
+                    {col}
+                  </th>
+                ))}
               </tr>
-              {editingId === s.sessionId && (
-                <tr className="border-b">
-                  <td colSpan={6}>
-                    <InlineEditPanel
-                      session={s}
-                      groupId={groupId}
-                      onClose={() => setEditingId(null)}
-                      onSaved={() => {
-                        setEditingId(null)
-                        router.refresh()
-                      }}
-                    />
-                  </td>
-                </tr>
-              )}
-            </Fragment>
-          ))}
-        </tbody>
-      </table>
-    </div>
+            </thead>
+            <tbody>
+              {closed.map((s) => (
+                <Fragment key={s.sessionId}>
+                  <tr style={{
+                    borderBottom: '1px solid rgba(62,111,168,0.06)',
+                    background: editingId === s.sessionId ? 'rgba(62,111,168,0.04)' : 'transparent',
+                    borderLeft: s.hasEvaluation ? '3px solid #FBB03B' : '3px solid transparent',
+                  }}>
+                    <td style={{ padding: '12px 16px', color: '#2D4A6B', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                      {new Date(s.sessionDate).toLocaleDateString()}
+                    </td>
+                    <td style={{ padding: '12px 16px', color: '#8BA3BC' }}>
+                      {s.projectName ?? '—'}
+                      {s.hasEvaluation && (
+                        <span style={{
+                          fontSize: 10, marginLeft: 6, padding: '2px 6px', borderRadius: 20,
+                          background: 'rgba(251,176,59,0.12)', color: '#92650A', fontWeight: 700,
+                        }}>
+                          ✓ Completado
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+                        ...statusBadgeStyle(s.status),
+                      }}>
+                        {statusLabel[s.status] ?? s.status}
+                      </span>
+                      {s.status === 'excused' && s.excusedReason && (
+                        <div style={{ fontSize: 11, color: '#92650A', marginTop: 3 }}>
+                          {tDash(`excusedReasons.${s.excusedReason}` as Parameters<typeof tDash>[0])}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: '12px 16px' }}>
+                      {s.trafficLight ? (
+                        <span style={{
+                          display: 'inline-block',
+                          width: 12, height: 12,
+                          borderRadius: '50%',
+                          background: TRAFFIC_COLOR[s.trafficLight] ?? '#ccc',
+                        }} />
+                      ) : (
+                        <span style={{ color: '#C8D8E8' }}>—</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '12px 16px', color: '#8BA3BC', fontSize: 12, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {s.teacherComment ?? '—'}
+                    </td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <button
+                          onClick={() => setEditingId(editingId === s.sessionId ? null : s.sessionId)}
+                          style={{
+                            fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 8, cursor: 'pointer',
+                            background: editingId === s.sessionId ? 'rgba(62,111,168,0.12)' : 'transparent',
+                            border: '1px solid rgba(62,111,168,0.15)',
+                            color: '#3E6FA8', whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {t('editSession')}
+                        </button>
+                        {s.status === 'completed' && s.hasEvaluation && (
+                          <button
+                            disabled={evalLoadingId === s.sessionId}
+                            onClick={() => handleEditEval(s)}
+                            style={{
+                              fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 8, cursor: 'pointer',
+                              background: 'rgba(251,176,59,0.08)',
+                              border: '1px solid rgba(251,176,59,0.22)',
+                              color: '#92650A', whiteSpace: 'nowrap',
+                              opacity: evalLoadingId === s.sessionId ? 0.5 : 1,
+                            }}
+                          >
+                            {evalLoadingId === s.sessionId ? '...' : '⭐ Eval'}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                  {editingId === s.sessionId && (
+                    <tr style={{ borderBottom: '1px solid rgba(62,111,168,0.08)' }}>
+                      <td colSpan={6}>
+                        <InlineEditPanel
+                          session={s}
+                          groupId={groupId}
+                          onClose={() => setEditingId(null)}
+                          onSaved={() => {
+                            setEditingId(null)
+                            router.refresh()
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
-    {evalState && (
-      <EvaluationModal
-        open={true}
-        isEditMode={true}
-        projectId={evalState.projectId}
-        planningId={planningId}
-        sessionId={evalState.sessionId}
-        groupId={groupId}
-        existingEvals={evalState.existingEvals}
-        successors={[]}
-        onClose={() => setEvalState(null)}
-        onCompleted={() => {
-          setEvalState(null)
-          router.refresh()
-        }}
-      />
-    )}
+      {evalState && (
+        <EvaluationModal
+          open={true}
+          isEditMode={true}
+          projectId={evalState.projectId}
+          planningId={planningId}
+          sessionId={evalState.sessionId}
+          groupId={groupId}
+          existingEvals={evalState.existingEvals}
+          successors={[]}
+          onClose={() => setEvalState(null)}
+          onCompleted={() => {
+            setEvalState(null)
+            router.refresh()
+          }}
+        />
+      )}
     </>
   )
 }
