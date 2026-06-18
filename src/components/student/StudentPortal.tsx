@@ -73,7 +73,16 @@ function Topbar({ lang, onLangChange, profileMode, onCollapsedChange }: { lang: 
         return
       }
       observer = new IntersectionObserver(
-        ([entry]) => { setCollapsed(!entry.isIntersecting); onCollapsedChange(!entry.isIntersecting) },
+        ([entry]) => {
+          // Only collapse if sentinel exited at the TOP (user scrolled down past hero)
+          if (!entry.isIntersecting && entry.boundingClientRect.top < 0) {
+            setCollapsed(true)
+            onCollapsedChange(true)
+          } else if (entry.isIntersecting) {
+            setCollapsed(false)
+            onCollapsedChange(false)
+          }
+        },
         { threshold: 0 }
       )
       observer.observe(sentinel)
@@ -2054,7 +2063,7 @@ function MisionesTab({ data }: { data: StudentPortalData }) {
     <div style={{ padding: '0 20px', paddingBottom: 32 }}>
       <div style={SECTION_TITLE}>Archivo de misiones</div>
       {data.proyectos.length === 0 ? (
-        <div style={{ ...CARD, padding: 32, textAlign: 'center', color: 'var(--sp-muted)', fontSize: 13 }}>Sin misiones aÃºn</div>
+        <div style={{ ...CARD, padding: 32, textAlign: 'center', color: 'var(--sp-muted)', fontSize: 13 }}>Sin misiones aún</div>
       ) : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16, alignItems: 'start' }}>
@@ -2066,7 +2075,7 @@ function MisionesTab({ data }: { data: StudentPortalData }) {
               onClick={() => setShowAll(true)}
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, margin: '16px auto 0', padding: '10px 24px', borderRadius: 30, background: 'var(--card-a)', border: '1.5px solid var(--blue-main)', color: 'var(--blue-dark)', fontSize: 13, fontWeight: 800, cursor: 'pointer', transition: 'opacity .15s', fontFamily: 'inherit' }}
             >
-              Ver todas las misiones â†’
+              Ver todas las misiones →
             </button>
           )}
         </>
@@ -2089,10 +2098,22 @@ const BRANCH_MINI: Record<string, string> = {
   Transversals: '<circle cx="7" cy="8" r="2.4" stroke="#fff" stroke-width="1.9" fill="none"/><circle cx="17" cy="8" r="2.4" stroke="#fff" stroke-width="1.9" fill="none"/><circle cx="12" cy="17" r="2.4" stroke="#fff" stroke-width="1.9" fill="none"/><path d="M9.2 8.6L14.8 8.6M8.2 10L10.6 14.8M15.8 10L13.4 14.8" stroke="#fff" stroke-width="1.6"/>',
 }
 
+const BRANCH_KEY_MAP: Record<string, string> = {
+  science:      'Science',
+  technology:   'Technology',
+  engineering:  'Engineering',
+  art:          'Art',
+  mathematics:  'Maths',
+  maths:        'Maths',
+  transversal:  'Transversals',
+  transversals: 'Transversals',
+}
+
 function branchIconHTML(code: string, color = '#fff'): string {
-  const key = code in BRANCH_MINI ? code
-    : Object.keys(BRANCH_MINI).find(k => k.toLowerCase() === code.toLowerCase()) ?? code
-  const raw = BRANCH_MINI[key] ?? ''
+  const normalizedKey = BRANCH_KEY_MAP[code.toLowerCase()]
+    ?? Object.keys(BRANCH_MINI).find(k => k.toLowerCase() === code.toLowerCase())
+    ?? code
+  const raw = BRANCH_MINI[normalizedKey] ?? ''
   if (!raw) return ''
   return raw
     .replace(/stroke="#fff"/g, `stroke="${color}"`)
@@ -2867,250 +2888,921 @@ function ActitudTab({ data }: { data: StudentPortalData }) {
   )
 }
 
-// ─── FamiliaPortal ────────────────────────────────────────────────────────────
+// ─── Familia color tokens (palette-immune) ────────────────────────────────────
 
-function FamiliaPortal({ data, onSwitchToAlumno }: { data: StudentPortalData; onSwitchToAlumno: () => void }) {
-  const [expandedArea, setExpandedArea] = useState<string | null>(null)
-  const ramas = Object.entries(data.ramas).filter(([, r]) => r.xp > 0)
-  const positiveActions = data.actitud.filter((a) => a.tipo === 'positiva')
-  const recentProject = data.proyectos[0] ?? null
+const F_INK       = '#2F3A4A'
+const F_DEEP      = '#3E6FA8'
+const F_CTA       = '#2596BE'
+const F_AMBER     = '#FBB03B'
+const F_YELLOW    = '#FBEFCB'
+const F_BLUE_SOFT = '#EAF1FA'
+const F_OAT       = '#EEE6D2'
+const F_YELLOW2   = '#FAEFC6'
+const F_OAT_BROWN = '#7a6433'
+const F_OAT_MID   = '#a08a5e'
 
-  // Familia tokens — hardcoded so they're immune to the alumno palette
-  const F_INK  = '#2F3A4A'
-  const F_DEEP = '#3E6FA8'
-  const F_CTA  = '#2596BE'
+// ─── FamWave ──────────────────────────────────────────────────────────────────
 
-  const eyebrow: React.CSSProperties = {
-    fontSize: 11.5, fontWeight: 800, letterSpacing: '2.6px',
-    textTransform: 'uppercase', color: F_DEEP, marginBottom: 4,
-  }
-  const sectionNumStyle = {
-    fontFamily: 'var(--font-fraunces, Georgia, serif)',
-    fontWeight: 300,
-    fontSize: 'clamp(54px, 15vw, 90px)',
-    color: 'transparent',
-    WebkitTextStroke: '1.3px rgba(62,111,168,.28)',
-    lineHeight: 1,
-    userSelect: 'none' as const,
-    flexShrink: 0,
-  }
-  const displayH: React.CSSProperties = {
-    fontFamily: 'var(--font-fraunces, Georgia, serif)',
-    fontWeight: 500,
-    fontSize: 'clamp(28px, 7vw, 52px)',
-    lineHeight: 1.04,
-    letterSpacing: '-1.3px',
-    color: F_INK,
-  }
-  const lede: React.CSSProperties = {
-    fontSize: 'clamp(14px, 2.2vw, 17px)',
-    lineHeight: 1.62,
-    color: '#56616f',
-  }
+function FamWave({ fill }: { fill: string }) {
+  return (
+    <svg
+      viewBox="0 0 1440 64"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: 64,
+        transform: 'translateY(-100%)',
+        pointerEvents: 'none',
+        display: 'block',
+      }}
+    >
+      <path d="M0,32 C360,64 1080,0 1440,32 L1440,64 L0,64 Z" fill={fill} />
+    </svg>
+  )
+}
+
+// ─── useFadeIn / RevealDiv ─────────────────────────────────────────────────────
+
+function useFadeIn(ref: React.RefObject<HTMLElement>, threshold = 0.15) {
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setVisible(true); obs.disconnect() } },
+      { threshold }
+    )
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+  return visible
+}
+
+function RevealDiv({ delay = '0s', children, style }: { delay?: string; children: React.ReactNode; style?: React.CSSProperties }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const visible = useFadeIn(ref as React.RefObject<HTMLElement>)
+  return (
+    <div ref={ref} style={{
+      ...style,
+      opacity: visible ? 1 : 0,
+      transform: visible ? 'none' : 'translateY(28px)',
+      transition: 'opacity 0.7s ease, transform 0.7s ease',
+      transitionDelay: delay,
+    }}>
+      {children}
+    </div>
+  )
+}
+
+// ─── AreaRow ──────────────────────────────────────────────────────────────────
+
+function AreaRow({ code, rama, isOpen, onToggle }: {
+  code: string
+  rama: StudentPortalData['ramas'][string]
+  isOpen: boolean
+  onToggle: () => void
+}) {
+  const skills = rama.habilidades.slice().sort((a, b) => b.xp - a.xp)
+  const [hovered, setHovered] = useState(false)
+  const barRef = useRef<HTMLDivElement>(null)
+  const [barVisible, setBarVisible] = useState(false)
+  useEffect(() => {
+    const el = barRef.current
+    if (!el) return
+    const obs = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) { setBarVisible(true); obs.disconnect() }
+    }, { threshold: 0.5 })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+  return (
+    <div style={{ borderBottom: '1px solid rgba(62,111,168,0.12)' }}>
+      <div onClick={onToggle} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 0', cursor: 'pointer' }}>
+        <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(255,255,255,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 1px 6px rgba(62,111,168,.10)' }}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" dangerouslySetInnerHTML={{ __html: branchIconHTML(code, F_DEEP) }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '1.5px', textTransform: 'uppercase' as const, color: F_CTA, marginBottom: 2 }}>
+            Competencia STEAM
+          </div>
+          <div style={{ fontFamily: 'var(--font-fraunces, Georgia, serif)', fontWeight: 600, fontSize: 18, color: hovered ? rama.color : F_INK, transform: hovered ? 'translateX(6px)' : 'translateX(0)', transition: 'color 0.25s, transform 0.25s' }}>
+            {rama.nombre}
+          </div>
+          <div style={{ fontSize: 12, color: '#8aa4be', marginTop: 1 }}>Nivel {rama.lv} · {rama.xp} XP</div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+          <div ref={barRef} style={{ width: 56, height: 6, borderRadius: 999, background: 'rgba(62,111,168,.15)' }}>
+            <div style={{ width: barVisible ? `${rama.progPct}%` : '0%', height: '100%', borderRadius: 999, background: F_DEEP, transition: 'width 1s cubic-bezier(.2,.7,.2,1)' }} />
+          </div>
+          <div style={{ width: 30, height: 30, borderRadius: '50%', border: `2px solid ${F_DEEP}`, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform .25s ease', transform: isOpen ? 'rotate(45deg)' : 'rotate(0deg)', color: F_DEEP, fontSize: 18, fontWeight: 300, flexShrink: 0 }}>+</div>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateRows: isOpen ? '1fr' : '0fr', transition: 'grid-template-rows .3s ease', overflow: 'hidden' }}>
+        <div style={{ minHeight: 0 }}>
+          <div style={{ paddingBottom: 20 }}>
+            {skills.map((skill, i) => (
+              <div key={skill.skillId} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 0', borderTop: i > 0 ? '1px solid rgba(62,111,168,.08)' : undefined }}>
+                <div style={{ display: 'flex', gap: 3, paddingTop: 3, flexShrink: 0 }}>
+                  {[1,2,3,4,5].map(pip => (
+                    <div key={pip} style={{ width: 7, height: 7, borderRadius: '50%', background: pip <= Math.min(skill.lv, 5) ? F_DEEP : 'rgba(62,111,168,.15)' }} />
+                  ))}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: F_INK }}>{skill.nombre}</div>
+                  {skill.descripcion && <div style={{ fontSize: 11.5, color: '#8aa4be', marginTop: 2, lineHeight: 1.45 }}>{skill.descripcion}</div>}
+                </div>
+                <span style={{ fontSize: 12, fontWeight: 700, color: F_DEEP, flexShrink: 0 }}>{skill.xp} XP</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── FamiliaPortal helpers ────────────────────────────────────────────────────
+
+function FamColeccionPin({ proyectos, onOpenAll }: {
+  proyectos: StudentPortalData['proyectos']
+  onOpenAll: () => void
+}) {
+  const pinRef      = useRef<HTMLDivElement>(null)   // .f-horiz-pin
+  const stickyRef   = useRef<HTMLDivElement>(null)   // .f-horiz-sticky
+  const trackRef    = useRef<HTMLDivElement>(null)   // .f-horiz-track
+  const counterRef  = useRef<HTMLSpanElement>(null)
+  const progressRef = useRef<HTMLDivElement>(null)
+  const rafRef      = useRef<number>(0)
+  const cards = proyectos.slice(0, 4)
+  const n = cards.length  // FH.n
+
+  useEffect(() => {
+    const pin    = pinRef.current
+    const sticky = stickyRef.current
+    const track  = trackRef.current
+    if (!pin || !sticky || !track) return
+
+    let dist = 0         // FH.dist
+    let fTicking = false // scroll batching flag
+
+    // EXACT translation of setupFamHoriz():
+    function setup() {
+      // var inner=root.querySelector('#fam-collection .f-scene-inner');
+      // var padL=inner?Math.max(16,inner.getBoundingClientRect().left):24;
+      const padL = Math.max(16, Math.min(Math.round(window.innerWidth * 0.05), 60))
+      // FH.track.style.paddingLeft=padL+'px'; FH.track.style.paddingRight=padL+'px';
+      track!.style.paddingLeft  = padL + 'px'
+      track!.style.paddingRight = padL + 'px'
+      // var dist=FH.track.scrollWidth-FH.sticky.clientWidth; if(dist<0)dist=0;
+      dist = track!.scrollWidth - sticky!.clientWidth
+      if (dist < 0) dist = 0
+      // FH.dist=dist; FH.pin.style.height=(window.innerHeight+dist)+'px';
+      pin!.style.height = (window.innerHeight + dist) + 'px'
+      // updateFamHoriz();
+      update()
+    }
+
+    // EXACT translation of updateFamHoriz():
+    function update() {
+      // if(!FH.pin||reduce)return;
+      // var scrollable=FH.pin.offsetHeight-window.innerHeight;
+      const scrollable = pin!.offsetHeight - window.innerHeight
+      // var rectTop=FH.pin.getBoundingClientRect().top;
+      const rectTop = pin!.getBoundingClientRect().top
+      // var prog=scrollable>0?Math.min(Math.max(-rectTop/scrollable,0),1):0;
+      const prog = scrollable > 0 ? Math.min(Math.max(-rectTop / scrollable, 0), 1) : 0
+      // FH.track.style.transform='translateX('+(-prog*FH.dist).toFixed(1)+'px)';
+      track!.style.transform = 'translateX(' + (-prog * dist).toFixed(1) + 'px)'
+      // var bar=document.getElementById('famHorizBar'); if(bar)bar.style.transform='scaleX('+prog.toFixed(3)+')';
+      if (progressRef.current) progressRef.current.style.transform = 'scaleX(' + prog.toFixed(3) + ')'
+      // var cnt=...; var idx=Math.min(FH.n,Math.max(1,Math.round(prog*(FH.n-1))+1)); cnt.textContent=...
+      const idx = Math.min(n, Math.max(1, Math.round(prog * (n - 1)) + 1))
+      if (counterRef.current) counterRef.current.textContent = (idx < 10 ? '0' : '') + idx
+    }
+
+    // onFamScroll() — fTicking pattern with rAF
+    function onScroll() {
+      if (fTicking) return
+      fTicking = true
+      rafRef.current = requestAnimationFrame(() => {
+        update()
+        fTicking = false
+      })
+    }
+
+    // Resize debounce 180ms (matches HTML: clearTimeout(rsz);rsz=setTimeout(setupFamHoriz,180))
+    let rsz: ReturnType<typeof setTimeout>
+    function onResize() {
+      clearTimeout(rsz)
+      rsz = setTimeout(setup, 180)
+    }
+
+    // Mount: setupFamHoriz(); setTimeout(setupFamHoriz,400);
+    setup()
+    const t400 = setTimeout(setup, 400)
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onResize, { passive: true })
+
+    return () => {
+      cancelAnimationFrame(rafRef.current)
+      clearTimeout(t400)
+      clearTimeout(rsz!)
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [proyectos.length, n])
 
   return (
-    <div style={{ width: '100%' }}>
+    <div ref={pinRef} data-debug="pin" style={{ position: 'relative' }}>
+      {/* .f-horiz-sticky */}
+      <div ref={stickyRef} data-debug="sticky" style={{
+        position: 'sticky', top: 0, height: '100svh',
+        display: 'flex', flexDirection: 'column',
+        justifyContent: 'center', gap: 30, overflow: 'hidden',
+        background: F_OAT, willChange: 'transform',
+      }}>
+        {/* .f-horiz-track — padding set dynamically by setup() */}
+        <div ref={trackRef} style={{
+          display: 'flex', gap: 22, alignItems: 'stretch',
+          willChange: 'transform',
+        }}>
+          {/* Project cards (.f-hcard) */}
+          {cards.map((p, i) => (
+            <article key={p.id}
+              onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.transform = 'translateY(-7px)'; el.style.boxShadow = '0 34px 64px -36px rgba(47,58,74,.4)' }}
+              onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.transform = ''; el.style.boxShadow = '' }}
+              style={{
+              position: 'relative', flexShrink: 0,
+              width: 'clamp(280px, 82vw, 430px)', minHeight: 'min(62vh, 520px)',
+              background: '#FBF6EB', border: '1px solid rgba(120,95,40,.16)',
+              borderRadius: 24, padding: '34px 32px',
+              display: 'flex', flexDirection: 'column', overflow: 'hidden',
+              transition: 'transform 0.45s cubic-bezier(.2,.7,.2,1), box-shadow 0.45s',
+            }}>
+              {/* .f-hcard-wm */}
+              <span style={{
+                position: 'absolute', right: 20, top: -2,
+                fontFamily: 'var(--font-fraunces, serif)', fontWeight: 300,
+                fontSize: 128, lineHeight: 1, color: 'rgba(120,95,40,.07)', pointerEvents: 'none',
+              }}>0{i + 1}</span>
+              {/* .f-hcard-cat */}
+              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase' as const, color: '#8a7234', position: 'relative' }}>
+                {p.materialType ?? 'Proyecto'}
+              </span>
+              {/* .f-hcard-title */}
+              <div style={{ fontFamily: 'var(--font-fraunces, serif)', fontWeight: 600, fontSize: 'clamp(24px, 4vw, 30px)', letterSpacing: -0.5, lineHeight: 1.1, margin: '14px 0 8px', position: 'relative', color: F_INK }}>
+                {p.nombre}
+              </div>
+              {/* .f-hcard-date */}
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: F_OAT_MID }}>
+                {p.fechaInicio ? fmtDate(p.fechaInicio) : fmtDate(p.evaluadoEn)}
+              </span>
+              {/* .f-hcard-desc */}
+              {p.descripcion && (
+                <p style={{ fontSize: 14.5, color: '#56616c', lineHeight: 1.62, marginTop: 14 }}>
+                  {p.descripcion.length > 160 ? p.descripcion.slice(0, 160) + '…' : p.descripcion}
+                </p>
+              )}
+              {/* .f-hcard-tags */}
+              <div style={{ marginTop: 'auto', paddingTop: 22 }}>
+                <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase' as const, color: '#a08f63' }}>Lo que aprendió</span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                  {p.habilidades.slice(0, 4).map((h, j) => (
+                    <span key={j} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 7,
+                      fontSize: 12, fontWeight: 600, color: '#3a4350',
+                      border: '1px solid rgba(47,58,74,.14)', borderRadius: 999,
+                      padding: '5px 12px', background: 'rgba(255,255,255,.5)',
+                    }}>{h.nombre}</span>
+                  ))}
+                </div>
+              </div>
+            </article>
+          ))}
 
-      {/* ── Hero ── */}
-      <section style={{ background: 'linear-gradient(172deg, #FBF3DC 0%, #F6ECCC 58%, #F2E6C2 100%)', padding: '48px 24px 40px' }}>
-        <div style={eyebrow}>Informe de progreso</div>
-        <div style={{ fontFamily: 'var(--font-fraunces, Georgia, serif)', fontWeight: 600, fontSize: 'clamp(25px,5vw,40px)', letterSpacing: '-.7px', lineHeight: 1.05, color: F_INK, marginBottom: 8 }}>
-          {data.nombre} {data.apellido}
+          {/* CTA card (.f-hcard.f-hcard-cta) */}
+          <article
+            onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.transform = 'translateY(-7px)'; el.style.boxShadow = '0 34px 64px -36px rgba(47,58,74,.4)' }}
+            onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.transform = ''; el.style.boxShadow = '' }}
+            style={{
+            position: 'relative', flexShrink: 0,
+            width: 'clamp(280px, 82vw, 430px)', minHeight: 'min(62vh, 520px)',
+            background: F_INK, border: '1px solid ' + F_INK,
+            borderRadius: 24, padding: '34px 32px',
+            display: 'flex', flexDirection: 'column', justifyContent: 'center',
+            overflow: 'hidden',
+            transition: 'transform 0.45s cubic-bezier(.2,.7,.2,1), box-shadow 0.45s',
+          }}>
+            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase' as const, color: '#9fb4cf' }}>
+              La colección al completo
+            </span>
+            <div style={{ fontFamily: 'var(--font-fraunces, serif)', fontWeight: 600, fontSize: 'clamp(24px, 4vw, 30px)', letterSpacing: -0.5, lineHeight: 1.1, margin: '14px 0 8px', color: '#fff' }}>
+              {proyectos.length} proyectos,<br />y subiendo.
+            </div>
+            <button onClick={onOpenAll} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 12,
+              marginTop: 22, alignSelf: 'flex-start',
+              background: F_AMBER, color: F_INK,
+              border: 'none', borderRadius: 999,
+              padding: '15px 26px', fontFamily: 'inherit',
+              fontSize: 13, fontWeight: 800, letterSpacing: 0.4,
+              textTransform: 'uppercase' as const, cursor: 'pointer',
+            }}>
+              Verlos todos →
+            </button>
+          </article>
         </div>
-        <div style={{ ...displayH, marginBottom: 10 }}>Mira todo lo que ha creado.</div>
-        {(data.colegio || data.grupo) && (
-          <div style={{ ...lede, marginBottom: 28 }}>{[data.colegio, data.grupo].filter(Boolean).join(' · ')}</div>
-        )}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
-          {[
-            { label: 'Proyectos', value: data.proyectos.length },
-            { label: 'Áreas',     value: ramas.length },
-            { label: 'Logros',    value: positiveActions.length },
-          ].map((s) => (
-            <div key={s.label} style={{ background: 'rgba(255,255,255,.55)', backdropFilter: 'blur(12px)', borderRadius: 18, padding: '16px 10px', textAlign: 'center' }}>
-              <div style={{ fontFamily: 'var(--font-fraunces, Georgia, serif)', fontSize: 36, fontWeight: 700, color: F_DEEP, lineHeight: 1 }}>{s.value}</div>
-              <div style={{ fontSize: 10, fontWeight: 800, color: F_DEEP, textTransform: 'uppercase', letterSpacing: '1.2px', marginTop: 6 }}>{s.label}</div>
+
+        {/* .f-horiz-foot */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 16,
+          maxWidth: 1080, width: '100%', margin: '0 auto', padding: '0 24px',
+        }}>
+          {/* .f-horiz-count */}
+          <span ref={counterRef} style={{ fontFamily: 'var(--font-fraunces, serif)', fontWeight: 400, fontSize: 22, color: F_OAT_BROWN }}>
+            01
+          </span>
+          {/* .f-horiz-total */}
+          <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.5, color: F_OAT_MID }}>
+            / 0{cards.length}
+          </span>
+          {/* .f-horiz-progress */}
+          <div style={{ flex: 1, height: 3, borderRadius: 999, background: 'rgba(120,95,40,.18)', overflow: 'hidden' }}>
+            <div ref={progressRef} style={{
+              display: 'block', height: '100%', width: '100%',
+              transform: 'scaleX(0)', transformOrigin: 'left',
+              background: F_OAT_BROWN, transition: 'transform .1s linear',
+            }} />
+          </div>
+          {/* .f-horiz-hint */}
+          <span style={{
+            fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2,
+            textTransform: 'uppercase' as const, color: F_OAT_MID,
+            display: 'inline-flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap',
+          }}>Baja para avanzar →</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── AllProyectosOverlay ──────────────────────────────────────────────────────
+
+function AllProyectosOverlay({ proyectos, nombre, onClose }: {
+  proyectos: StudentPortalData['proyectos']
+  nombre: string
+  onClose: () => void
+}) {
+  const [openIdx, setOpenIdx] = useState<number | null>(null)
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handler)
+    return () => { document.body.style.overflow = ''; document.removeEventListener('keydown', handler) }
+  }, [onClose])
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 400, background: 'linear-gradient(180deg, #EEE6D2 0%, #E4D9C0 100%)', overflowY: 'auto' }}>
+      <div style={{
+        position: 'sticky', top: 0, zIndex: 10,
+        background: 'rgba(238,230,210,.88)', backdropFilter: 'blur(14px)',
+        WebkitBackdropFilter: 'blur(14px)',
+        borderBottom: '1px solid rgba(120,95,40,.18)',
+        padding: '16px clamp(16px, 5vw, 60px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: F_OAT_MID, letterSpacing: 2, textTransform: 'uppercase' as const }}>Toda la colección</div>
+          <div style={{ fontFamily: 'var(--font-fraunces, serif)', fontWeight: 600, fontSize: 18, color: F_OAT_BROWN }}>Todo lo que ha creado.</div>
+        </div>
+        <button onClick={onClose} style={{ width: 38, height: 38, borderRadius: '50%', border: '1px solid rgba(120,95,40,.3)', background: 'transparent', fontSize: 18, cursor: 'pointer', color: F_OAT_BROWN, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+      </div>
+      <div style={{ maxWidth: 1080, margin: '0 auto', padding: 'clamp(32px, 5vh, 60px) clamp(16px, 5vw, 60px)' }}>
+        <div style={{ fontFamily: 'var(--font-fraunces, serif)', fontWeight: 500, fontSize: 'clamp(28px,6vw,46px)', letterSpacing: -1, lineHeight: 1.05, color: F_OAT_BROWN, marginBottom: 8 }}>
+          La colección de {nombre}.
+        </div>
+        <p style={{ fontSize: 15, color: '#6a5d44', marginBottom: 30, lineHeight: 1.6 }}>
+          Abre cualquier proyecto para ver qué aprendió.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 18 }}>
+          {proyectos.map((p, i) => (
+            <div key={p.id} style={{
+              background: '#FBF6EB', borderRadius: 20,
+              border: '1px solid rgba(120,95,40,.16)',
+              padding: '24px 26px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 16 }}>
+                <span style={{ fontFamily: 'var(--font-fraunces, serif)', fontStyle: 'italic', fontWeight: 400, fontSize: 15, color: '#b89a52' }}>
+                  N.Âº {String(i + 1).padStart(2, '0')}
+                </span>
+                <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase' as const, color: '#8a7234' }}>
+                  {p.materialType ?? 'Proyecto'}
+                </span>
+              </div>
+              <div style={{ fontFamily: 'var(--font-fraunces, serif)', fontWeight: 600, fontSize: 22, letterSpacing: -.5, lineHeight: 1.12, color: F_OAT_BROWN, marginBottom: 7 }}>{p.nombre}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#a08a5e', marginBottom: p.descripcion ? 11 : 0 }}>
+                {p.fechaInicio ? fmtDate(p.fechaInicio) : fmtDate(p.evaluadoEn)}
+              </div>
+              {p.descripcion && <p style={{ fontSize: 14, color: '#56616c', marginTop: 11, lineHeight: 1.6 }}>{p.descripcion}</p>}
+              <button
+                onClick={() => setOpenIdx(openIdx === i ? null : i)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  background: 'none', border: 0, borderTop: '1px dashed rgba(120,95,40,.25)',
+                  width: '100%', marginTop: 8, padding: '7px 0',
+                  fontSize: 12, fontWeight: 800, color: F_CTA, cursor: 'pointer',
+                  textTransform: 'uppercase' as const,
+                }}
+              >
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" style={{ transform: openIdx === i ? 'rotate(180deg)' : 'none', transition: 'transform .2s', flexShrink: 0 }}>
+                  <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+                </svg>
+                Ver lo que aprendió
+              </button>
+              <div style={{ display: 'grid', gridTemplateRows: openIdx === i ? '1fr' : '0fr', transition: 'grid-template-rows .3s ease', overflow: 'hidden' }}>
+                <div style={{ minHeight: 0 }}>
+                  <div style={{ paddingTop: 12, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {p.habilidades.map((h, j) => (
+                      <span key={j} style={{ fontSize: 11.5, fontWeight: 600, padding: '4px 10px', borderRadius: 999, border: '1px solid rgba(120,95,40,.2)', background: 'rgba(255,255,255,.6)', color: F_INK }}>{h.nombre}</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           ))}
         </div>
-      </section>
-      <div id="topbar-sentinel" style={{ height: 0 }} />
+      </div>
+    </div>
+  )
+}
 
-      {/* ── 01 En Curso ── */}
-      <section style={{ background: 'linear-gradient(180deg, #FBEFCB 0%, #F8E7B4 100%)', padding: '40px 24px' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 20 }}>
-          <span style={sectionNumStyle as React.CSSProperties}>01</span>
-          <div style={{ paddingTop: 8 }}>
-            <div style={eyebrow}>Ahora mismo</div>
-            <div style={displayH}>En curso</div>
-          </div>
+// ─── MomentosModal ────────────────────────────────────────────────────────────
+
+function MomentosModal({ acciones, onClose }: {
+  acciones: StudentPortalData['actitud']
+  onClose: () => void
+}) {
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handler)
+    return () => { document.body.style.overflow = ''; document.removeEventListener('keydown', handler) }
+  }, [onClose])
+
+  const positive = acciones.filter(a => a.tipo === 'positiva')
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 400, background: 'linear-gradient(180deg, #FBF0CC 0%, #F6E9B8 100%)', overflowY: 'auto' }}>
+      <div style={{
+        position: 'sticky', top: 0, zIndex: 10,
+        background: 'rgba(251,240,204,.88)', backdropFilter: 'blur(14px)',
+        WebkitBackdropFilter: 'blur(14px)',
+        borderBottom: '1px solid rgba(120,95,40,.18)',
+        padding: '16px clamp(16px, 5vw, 60px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: F_OAT_MID, letterSpacing: 2, textTransform: 'uppercase' as const }}>Momentos en el aula</div>
+          <div style={{ fontFamily: 'var(--font-fraunces, serif)', fontWeight: 600, fontSize: 18, color: F_OAT_BROWN }}>Momentos que merecen un marco.</div>
         </div>
-        {recentProject ? (
-          <div style={{ background: 'rgba(255,255,255,.72)', backdropFilter: 'blur(12px)', borderRadius: 20, padding: 20, border: `1px solid rgba(251,176,59,.3)` }}>
-            <div style={{ fontFamily: 'var(--font-fraunces, Georgia, serif)', fontSize: 22, fontWeight: 700, color: F_INK, lineHeight: 1.2, marginBottom: 8 }}>{recentProject.nombre}</div>
-            {recentProject.descripcion && (
-              <div style={{ ...lede, fontSize: 14, marginBottom: 12 }}>{recentProject.descripcion}</div>
-            )}
-            {recentProject.habilidades.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {recentProject.habilidades.map((sk, i) => (
-                  <span key={i} style={{ padding: '5px 12px', borderRadius: 20, background: 'rgba(62,111,168,.10)', fontSize: 12, fontWeight: 700, color: F_DEEP }}>
-                    {sk.nombre}
-                  </span>
-                ))}
+        <button onClick={onClose} style={{ width: 38, height: 38, borderRadius: '50%', border: '1px solid rgba(120,95,40,.3)', background: 'transparent', fontSize: 18, cursor: 'pointer', color: F_OAT_BROWN, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+      </div>
+      <div style={{ maxWidth: 1080, margin: '0 auto', padding: 'clamp(32px, 5vh, 60px) clamp(16px, 5vw, 60px)' }}>
+        <div style={{ fontFamily: 'var(--font-fraunces, serif)', fontWeight: 500, fontSize: 'clamp(28px,6vw,46px)', letterSpacing: -1, lineHeight: 1.05, color: F_OAT_BROWN, marginBottom: 8 }}>
+          Todo lo que merece un marco.
+        </div>
+        <p style={{ fontSize: 15, color: '#6a5d44', marginBottom: 30, lineHeight: 1.6 }}>
+          Todo lo que el profesorado ha recogido clase a clase.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
+          {positive.map(a => (
+            <div key={a.id} style={{
+              background: '#FCF6E6', borderRadius: 18,
+              border: '1px solid rgba(120,95,40,.18)',
+              padding: '22px 24px 22px 28px',
+              position: 'relative', overflow: 'hidden',
+            }}>
+              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: F_AMBER, borderRadius: '18px 0 0 18px' }} />
+              <div style={{ fontFamily: 'var(--font-fraunces, serif)', fontWeight: 600, fontSize: 16, color: F_INK, marginBottom: 6, lineHeight: 1.3 }}>{a.nombre}</div>
+              <div style={{ fontSize: 11, fontWeight: 800, color: F_OAT_MID, textTransform: 'uppercase' as const, letterSpacing: 1 }}>
+                {new Date(a.fecha.includes('T') ? a.fecha : a.fecha + 'T12:00:00').toLocaleDateString('es', { day: 'numeric', month: 'long', year: 'numeric' })}
               </div>
-            )}
-          </div>
-        ) : (
-          <div style={{ ...lede, textAlign: 'center', padding: '24px 0', color: '#8aa4be' }}>Aún no hay proyectos</div>
-        )}
-      </section>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
 
-      {/* ── 02 Áreas ── */}
-      {ramas.length > 0 && (
-        <section style={{ background: 'linear-gradient(180deg, #EAF1FA 0%, #DBE8F6 100%)', padding: '40px 24px' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 20 }}>
-            <span style={sectionNumStyle as React.CSSProperties}>02</span>
-            <div style={{ paddingTop: 8 }}>
-              <div style={eyebrow}>Territorios</div>
-              <div style={displayH}>Áreas</div>
+// ─── FamSeal ──────────────────────────────────────────────────────────────────
+
+function FamSeal({ nombre }: { nombre: string }) {
+  const SIZE = 200
+  const cx = SIZE / 2   // 100
+  const cy = SIZE / 2   // 100
+  const R = 72          // text circle radius — large enough for text to fit without overlap
+  const text = `· IGNITE NEXUS · BIENVENIDO AL UNIVERSO DE ${nombre.toUpperCase()} · IGNITE NEXUS · BIENVENIDO AL UNIVERSO DE ${nombre.toUpperCase()} `
+
+  return (
+    <div style={{
+      width: 'clamp(150px, 18vw, 220px)',
+      height: 'clamp(150px, 18vw, 220px)',
+      flexShrink: 0,
+    }}>
+      <svg
+        viewBox={`0 0 ${SIZE} ${SIZE}`}
+        width="100%"
+        height="100%"
+      >
+        <defs>
+          {/* Full circle path for textPath — starts at top */}
+          <path
+            id="seal-circle"
+            d={`M ${cx},${cy - R} A ${R},${R} 0 1,1 ${cx - 0.01},${cy - R}`}
+          />
+        </defs>
+
+        {/* Outer dashed ring */}
+        <circle
+          cx={cx} cy={cy} r={R + 10}
+          fill="none"
+          stroke="rgba(47,58,74,0.18)"
+          strokeWidth="1"
+          strokeDasharray="2 5"
+        />
+
+        {/* Inner ring */}
+        <circle
+          cx={cx} cy={cy} r={R - 10}
+          fill="none"
+          stroke="rgba(47,58,74,0.10)"
+          strokeWidth="0.7"
+        />
+
+        {/* Spinning text */}
+        <g style={{
+          animation: 'fSealSpin 26s linear infinite',
+          transformOrigin: `${cx}px ${cy}px`,
+        }}>
+          <text
+            fontSize="7"
+            fontFamily="'Figtree', system-ui, sans-serif"
+            fontWeight="700"
+            letterSpacing="3"
+            fill="rgba(47,58,74,0.50)"
+          >
+            <textPath href="#seal-circle" startOffset="0%">
+              {text}
+            </textPath>
+          </text>
+        </g>
+
+        {/* Center: exact IGNITE NEXUS bolt — same path as LogoIcon */}
+        {/* The bolt path has natural bounds roughly -7 to +7 wide, -15 to +18.4 tall */}
+        {/* Center it at (cx, cy) by translating to cx, cy-2 (optical center) */}
+        <g transform={`translate(${cx}, ${cy - 2})`}>
+          <path
+            d="M-3.2-15 L3.2-14 L6.4 4.6 L.8 4.6 L-.8 18.4 L-7.2-2.3 L-1.6-2.3Z"
+            fill="#FBB03B"
+            stroke="#FBB03B"
+            strokeWidth="0.8"
+            strokeLinejoin="round"
+          />
+        </g>
+      </svg>
+    </div>
+  )
+}
+
+// ─── FamiliaPortal ─────────────────────────────────────────────────────────────
+
+function FamiliaPortal({ data, onSwitchToAlumno }: { data: StudentPortalData; onSwitchToAlumno: () => void }) {
+  const [expandedArea, setExpandedArea] = useState<string | null>(null)
+  const [allProjOpen, setAllProjOpen] = useState(false)
+  const [momentosOpen, setMomentosOpen] = useState(false)
+  const [heroVisible, setHeroVisible] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setHeroVisible(true), 100)
+    return () => clearTimeout(t)
+  }, [])
+
+  const ramas = Object.entries(data.ramas).filter(([, r]) => r.xp > 0)
+  const displayProject = data.misionActiva ?? (data.proyectos[0]
+    ? {
+        nombre: data.proyectos[0].nombre,
+        descripcion: data.proyectos[0].descripcion,
+        materialType: data.proyectos[0].materialType,
+        habilidades: data.proyectos[0].habilidades.map(h => ({
+          nombre: h.nombre,
+          xpBase: h.xpAward,
+          branchCode: h.branchCode,
+        })),
+        xpMaximo: data.proyectos[0].xpTotal,
+        fechaInicio: data.proyectos[0].fechaInicio,
+      }
+    : null)
+  const isUsingMisionActiva = data.misionActiva !== null
+  const positiveActions = data.actitud.filter(a => a.tipo === 'positiva')
+
+  const SCENE: React.CSSProperties = {
+    padding: 'clamp(80px,12vh,140px) 0 clamp(64px,9vh,110px)',
+    position: 'relative',
+  }
+  const INNER: React.CSSProperties = { maxWidth: 1080, margin: '0 auto', padding: '0 clamp(16px,5vw,48px)' }
+  const EYEBROW: React.CSSProperties = {
+    fontSize: 11, fontWeight: 800, letterSpacing: '2.6px',
+    textTransform: 'uppercase', color: F_DEEP, marginBottom: 8,
+  }
+  const HEADING: React.CSSProperties = {
+    fontFamily: 'var(--font-fraunces, Georgia, serif)',
+    fontWeight: 600,
+    fontSize: 'clamp(28px,4.5vw,50px)',
+    lineHeight: 1.2,
+    color: F_INK,
+    marginBottom: 20,
+  }
+  const LEDE: React.CSSProperties = {
+    fontSize: 'clamp(15px,1.8vw,17px)',
+    lineHeight: 1.7,
+    color: F_INK,
+    opacity: 0.68,
+    maxWidth: 560,
+    marginBottom: 36,
+  }
+
+  return (
+    <div style={{ fontFamily: "'Figtree', system-ui, sans-serif", background: F_YELLOW, color: F_INK }}>
+      <style>{`
+        @keyframes fTwinkle {
+          0%,100%{opacity:1;transform:scale(1) rotate(0deg)}
+          33%{opacity:.5;transform:scale(.82) rotate(18deg)}
+          66%{opacity:.85;transform:scale(1.12) rotate(-12deg)}
+        }
+        @keyframes famSpin {
+          from{transform:rotate(0deg)}
+          to{transform:rotate(360deg)}
+        }
+        @keyframes famBreathe {
+          0%,100%{transform:scale(1);opacity:.18}
+          50%{transform:scale(1.09);opacity:.28}
+        }
+        @keyframes famScrollCue {
+          0%,100%{transform:translateY(0);opacity:.6}
+          50%{transform:translateY(9px);opacity:.25}
+        }
+        @keyframes fSealSpin {
+          from{transform:rotate(0deg)}
+          to{transform:rotate(360deg)}
+        }
+      `}</style>
+
+      {/* ── HERO ────────────────────────────────────────────────────────────── */}
+      <section style={{
+        ...SCENE,
+        background: F_YELLOW,
+        minHeight: '100svh',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        paddingTop: 'clamp(100px,15vh,170px)',
+        paddingBottom: 'clamp(60px,8vh,100px)',
+      }}>
+        <div style={{ position: 'absolute', top: '-8%', right: '-6%', width: 480, height: 480, borderRadius: '50%', background: 'radial-gradient(circle, rgba(37,150,190,0.13) 0%, transparent 68%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', bottom: '6%', left: '-5%', width: 400, height: 400, borderRadius: '50%', background: 'radial-gradient(circle, rgba(251,176,59,0.18) 0%, transparent 68%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', top: '16%', left: '8%', animation: 'fTwinkle 3.4s ease-in-out infinite', pointerEvents: 'none' }}>
+          <svg width="30" height="30" viewBox="0 0 24 24" fill={F_AMBER}><path d="M12 2L13.5 9.5L21 11L13.5 12.5L12 20L10.5 12.5L3 11L10.5 9.5Z"/></svg>
+        </div>
+        <div style={{ position: 'absolute', top: '40%', right: '10%', animation: 'fTwinkle 4.2s ease-in-out infinite .9s', pointerEvents: 'none' }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill={F_AMBER}><path d="M12 2L13.5 9.5L21 11L13.5 12.5L12 20L10.5 12.5L3 11L10.5 9.5Z"/></svg>
+        </div>
+        <div style={INNER}>
+          {/* Hero inner — two column on desktop */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'clamp(32px, 6vw, 80px)',
+            flexWrap: 'wrap',
+          }}>
+            {/* Left column — text content */}
+            <div style={{ flex: '1 1 320px', minWidth: 0 }}>
+              <div style={EYEBROW}>Espacio de la familia</div>
+              <h1 style={{ fontFamily: 'var(--font-fraunces, Georgia, serif)', fontWeight: 600, fontSize: 'clamp(40px,7vw,74px)', lineHeight: 1.08, color: F_INK, marginBottom: 12 }}>
+                {data.nombre} {data.apellido}
+              </h1>
+              {(data.colegio || data.grupo) && (
+                <div style={{ fontSize: 15, color: F_DEEP, fontWeight: 600, marginBottom: 32, opacity: .8 }}>
+                  {data.colegio}{data.colegio && data.grupo ? ' · ' : ''}{data.grupo}
+                </div>
+              )}
+              <div style={{ fontFamily: 'var(--font-fraunces, Georgia, serif)', fontWeight: 600, fontSize: 'clamp(22px,3.5vw,40px)', lineHeight: 1.35, color: F_INK, maxWidth: 560, marginBottom: 20 }}>
+                Mira todo lo que ha <em style={{ fontStyle: 'italic' }}>creado.</em>
+              </div>
+              <p style={{ ...LEDE, marginBottom: 8 }}>
+                Aquí tienes un resumen de su aprendizaje, sus proyectos y los momentos que merece recordar.
+              </p>
+              <div style={{ display: 'inline-block', animation: 'famScrollCue 2.2s ease-in-out infinite', color: F_DEEP, fontSize: 24, marginTop: 8 }}>↓</div>
+            </div>
+
+            {/* Right column — rotating seal */}
+            <div style={{
+              flex: '0 0 auto',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              alignSelf: 'flex-start',
+              marginTop: 20,
+            }}>
+              <FamSeal nombre={data.nombre} />
             </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {ramas.map(([code, rama]) => {
-              const isExp = expandedArea === code
-              return (
-                <div key={code} style={{ background: 'rgba(255,255,255,.65)', backdropFilter: 'blur(10px)', borderRadius: 18, border: '1px solid rgba(124,184,245,.25)', overflow: 'hidden' }}>
-                  <button
-                    onClick={() => setExpandedArea(isExp ? null : code)}
-                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '16px 18px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' as const }}
-                  >
-                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: rama.color, flexShrink: 0, display: 'block' }} />
-                    <span style={{ flex: 1, fontSize: 16, fontWeight: 800, color: F_INK }}>{rama.nombre}</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: F_CTA, marginRight: 6 }}>Niv.{rama.lv}</span>
-                    <span style={{ display: 'inline-block', transform: isExp ? 'rotate(90deg)' : 'none', transition: 'transform .2s', fontSize: 10, color: F_DEEP }}>▶</span>
-                  </button>
-                  <div style={{ padding: '0 18px 4px' }}>
-                    <div style={{ height: 8, borderRadius: 10, background: 'rgba(62,111,168,.12)', overflow: 'hidden', marginBottom: isExp ? 12 : 16 }}>
-                      <div style={{ height: '100%', borderRadius: 10, background: rama.color, width: `${rama.progPct}%` }} />
-                    </div>
-                  </div>
-                  {isExp && (
-                    <div style={{ padding: '0 18px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {rama.habilidades.slice().sort((a, b) => b.xp - a.xp).map((sk) => (
-                        <div key={sk.skillId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'rgba(255,255,255,.6)', borderRadius: 12 }}>
-                          <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: F_INK }}>{sk.nombre}</span>
-                          <span style={{ fontSize: 12, fontWeight: 800, color: F_CTA }}>+{sk.xp} XP</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* ── 03 Colección ── */}
-      <section style={{ background: 'linear-gradient(180deg, #EEE6D2 0%, #E4D9C0 100%)', padding: '40px 0' }}>
-        <div style={{ padding: '0 24px', display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 20 }}>
-          <span style={sectionNumStyle as React.CSSProperties}>03</span>
-          <div style={{ paddingTop: 8 }}>
-            <div style={eyebrow}>Archivo</div>
-            <div style={displayH}>Colección</div>
-          </div>
         </div>
-        {data.proyectos.length === 0 ? (
-          <div style={{ padding: '0 24px', ...lede, textAlign: 'center', color: '#8aa4be' }}>Aún no hay proyectos completados</div>
-        ) : (
-          <div style={{ overflowX: 'auto', display: 'flex', gap: 14, padding: '4px 24px 16px' }}>
-            {data.proyectos.map((p, i) => (
-              <div key={p.id} style={{ flexShrink: 0, width: 200, background: 'rgba(255,255,255,.75)', backdropFilter: 'blur(10px)', borderRadius: 18, padding: 16, border: '1px solid rgba(139,107,70,.15)' }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: F_DEEP, letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: 8 }}>
-                  {String(i + 1).padStart(2, '0')}
+      </section>
+
+      {/* Sentinel — triggers topbar collapse when hero exits viewport */}
+      <div id="topbar-sentinel" style={{ height: 0 }} />
+
+      {/* ── 01 EN CURSO ─────────────────────────────────────────────────────── */}
+      <section style={{ ...SCENE, background: '#FCF6EF' }}>
+        <FamWave fill="#FCF6EF" />
+        <div style={{ position: 'absolute', top: 40, right: 40, pointerEvents: 'none' }}>
+          <svg width="160" height="160" viewBox="0 0 160 160" fill="none" style={{ animation: 'famSpin 24s linear infinite', opacity: .10 }}>
+            <circle cx="80" cy="80" r="70" stroke={F_DEEP} strokeWidth="3" strokeDasharray="16 12" />
+            <circle cx="80" cy="80" r="50" stroke={F_AMBER} strokeWidth="2" strokeDasharray="10 16" />
+          </svg>
+        </div>
+        <div style={INNER}>
+          <div style={{ fontFamily: 'var(--font-fraunces, Georgia, serif)', fontWeight: 300, fontSize: 'clamp(80px,15vw,140px)', color: 'rgba(62,111,168,0.06)', lineHeight: 1, marginBottom: -20, userSelect: 'none', pointerEvents: 'none' }}>01</div>
+          <RevealDiv delay="0.1s"><div style={EYEBROW}>Ahora mismo</div></RevealDiv>
+          <RevealDiv delay="0.25s"><h2 style={HEADING}>Está en mitad de algo <em style={{ fontStyle: 'italic' }}>grande.</em></h2></RevealDiv>
+          <RevealDiv delay="0.4s"><p style={LEDE}>El proyecto en el que trabaja ahora mismo en clase, las habilidades que practica y lo que está aprendiendo.</p></RevealDiv>
+          <RevealDiv delay="0.55s">
+          {displayProject ? (
+            <div style={{ background: '#FCF6EB', borderRadius: 24, overflow: 'hidden', maxWidth: 620, boxShadow: '0 4px 32px rgba(62,111,168,0.09)' }}>
+              <div style={{ aspectRatio: '16/10', background: 'linear-gradient(135deg, #F3E9D8 0%, #EAD9C2 100%)', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ position: 'absolute', top: 12, left: 12, width: 16, height: 16, borderTop: `2px solid ${F_AMBER}`, borderLeft: `2px solid ${F_AMBER}` }} />
+                <div style={{ position: 'absolute', top: 12, right: 12, width: 16, height: 16, borderTop: `2px solid ${F_AMBER}`, borderRight: `2px solid ${F_AMBER}` }} />
+                <div style={{ position: 'absolute', bottom: 12, left: 12, width: 16, height: 16, borderBottom: `2px solid ${F_AMBER}`, borderLeft: `2px solid ${F_AMBER}` }} />
+                <div style={{ position: 'absolute', bottom: 12, right: 12, width: 16, height: 16, borderBottom: `2px solid ${F_AMBER}`, borderRight: `2px solid ${F_AMBER}` }} />
+                <div style={{ fontFamily: 'var(--font-fraunces, Georgia, serif)', fontWeight: 300, fontSize: 72, color: F_AMBER, opacity: .3, lineHeight: 1 }}>✦</div>
+              </div>
+              <div style={{ padding: '24px 28px 28px' }}>
+                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '2px', textTransform: 'uppercase' as const, color: F_CTA, marginBottom: 8 }}>
+                  {isUsingMisionActiva ? 'En curso' : 'Último proyecto'}
                 </div>
-                <div style={{ fontFamily: 'var(--font-fraunces, Georgia, serif)', fontSize: 17, fontWeight: 700, color: F_INK, lineHeight: 1.2, marginBottom: 6 }}>{p.nombre}</div>
-                {p.descripcion && (
-                  <div style={{ fontSize: 12, color: '#56616f', lineHeight: 1.5, marginBottom: 8, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } as React.CSSProperties}>{p.descripcion}</div>
+                <div style={{ fontFamily: 'var(--font-fraunces, Georgia, serif)', fontWeight: 600, fontSize: 'clamp(18px,3vw,26px)', color: F_INK, marginBottom: 10 }}>
+                  {displayProject.nombre}
+                </div>
+                {displayProject.descripcion && (
+                  <p style={{ fontSize: 14, lineHeight: 1.65, color: F_INK, opacity: .65, marginBottom: 16 }}>{displayProject.descripcion}</p>
                 )}
-                <div style={{ fontSize: 12, color: '#8aa4be', fontWeight: 600, marginBottom: 8 }}>
-                  {p.fechaInicio && p.fechaFin ? (
-                    p.fechaInicio === p.fechaFin
-                      ? fmtDate(p.fechaInicio)
-                      : `${fmtDate(p.fechaInicio)} – ${fmtDate(p.fechaFin)}`
-                  ) : fmtDate(p.evaluadoEn)}
-                </div>
-                {p.habilidades.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                    {p.habilidades.slice(0, 3).map((sk, j) => (
-                      <span key={j} style={{ padding: '3px 8px', borderRadius: 10, background: 'rgba(62,111,168,.09)', fontSize: 10.5, fontWeight: 700, color: F_DEEP }}>
-                        {sk.nombre}
-                      </span>
+                {displayProject.habilidades.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                    {displayProject.habilidades.slice(0, 5).map((h, i) => (
+                      <span key={i} style={{ fontSize: 11.5, fontWeight: 700, padding: '4px 12px', borderRadius: 999, background: 'rgba(62,111,168,0.1)', color: F_DEEP }}>{h.nombre}</span>
                     ))}
                   </div>
                 )}
               </div>
-            ))}
+            </div>
+          ) : (
+            <div style={{ padding: 32, borderRadius: 20, background: 'rgba(62,111,168,0.06)', textAlign: 'center' as const, color: F_DEEP, opacity: .7 }}>
+              Aún no hay proyectos registrados.
+            </div>
+          )}
+          </RevealDiv>
+        </div>
+      </section>
+
+      {/* ── 02 ÁREAS ────────────────────────────────────────────────────────── */}
+      <section style={{ ...SCENE, background: F_BLUE_SOFT }}>
+        <FamWave fill={F_BLUE_SOFT} />
+        <div style={{ position: 'absolute', bottom: 30, left: 30, pointerEvents: 'none' }}>
+          <svg width="180" height="180" viewBox="0 0 180 180" fill="none" style={{ animation: 'famSpin 32s linear infinite reverse', opacity: .09 }}>
+            <circle cx="90" cy="90" r="78" stroke={F_DEEP} strokeWidth="2" strokeDasharray="14 10" />
+          </svg>
+        </div>
+        <div style={INNER}>
+          <div style={{ fontFamily: 'var(--font-fraunces, Georgia, serif)', fontWeight: 300, fontSize: 'clamp(80px,15vw,140px)', color: 'rgba(62,111,168,0.06)', lineHeight: 1, marginBottom: -20, userSelect: 'none', pointerEvents: 'none' }}>02</div>
+          <RevealDiv delay="0.1s"><div style={EYEBROW}>Lo que explora</div></RevealDiv>
+          <RevealDiv delay="0.25s"><h2 style={HEADING}>Seis territorios. Una mente <em style={{ fontStyle: 'italic' }}>inquieta.</em></h2></RevealDiv>
+          <RevealDiv delay="0.4s"><p style={LEDE}>La metodología STEAM integra Ciencia, Tecnología, Ingeniería, Arte y Matemáticas con habilidades transversales como trabajo en equipo, pensamiento crítico y comunicación.</p></RevealDiv>
+          <RevealDiv delay="0.55s">
+          {ramas.length === 0 ? (
+            <div style={{ padding: 32, borderRadius: 20, background: 'rgba(62,111,168,0.08)', textAlign: 'center' as const, color: F_DEEP, opacity: .7 }}>
+              Aún no hay áreas con XP registrado.
+            </div>
+          ) : (
+            <div style={{ background: 'rgba(255,255,255,0.65)', borderRadius: 20, padding: '0 24px', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
+              {ramas.map(([code, rama]) => (
+                <AreaRow
+                  key={code}
+                  code={code}
+                  rama={rama}
+                  isOpen={expandedArea === code}
+                  onToggle={() => setExpandedArea(expandedArea === code ? null : code)}
+                />
+              ))}
+            </div>
+          )}
+          </RevealDiv>
+        </div>
+      </section>
+
+      {/* ── 03 COLECCIÓN ────────────────────────────────────────────────────── */}
+      <section style={{ position: 'relative', background: F_OAT, padding: 0 }}>
+        <FamWave fill={F_OAT} />
+        <div style={{ position: 'absolute', top: '45%', right: '-4%', transform: 'translateY(-50%)', pointerEvents: 'none', animation: 'famBreathe 4.5s ease-in-out infinite' }}>
+          <div style={{ width: 280, height: 280, borderRadius: '50%', background: F_OAT_MID, opacity: .15 }} />
+        </div>
+        <div style={{ maxWidth: 1080, margin: '0 auto', padding: 'clamp(80px,12vh,140px) clamp(16px,5vw,60px) clamp(40px,5vh,60px)', position: 'relative', zIndex: 1 }}>
+          <div style={{ fontFamily: 'var(--font-fraunces, Georgia, serif)', fontWeight: 300, fontSize: 'clamp(80px,15vw,140px)', color: 'rgba(122,100,51,0.08)', lineHeight: 1, marginBottom: -20, userSelect: 'none', pointerEvents: 'none' }}>03</div>
+          <RevealDiv delay="0.1s"><div style={{ ...EYEBROW, color: F_OAT_MID }}>Su colección</div></RevealDiv>
+          <RevealDiv delay="0.25s"><h2 style={{ ...HEADING, color: F_OAT_BROWN }}>Cosas que ha hecho... <em style={{ fontStyle: 'italic' }}>(y su cabeza).</em></h2></RevealDiv>
+          <RevealDiv delay="0.4s"><p style={{ ...LEDE, color: F_OAT_BROWN, marginBottom: 0 }}>Cada proyecto es un pedazo de lo que ha aprendido y construido.</p></RevealDiv>
+        </div>
+        {data.proyectos.length === 0 ? (
+          <div style={{ maxWidth: 1080, margin: '0 auto', padding: 'clamp(32px,5vh,48px) clamp(16px, 5vw, 60px) clamp(64px,9vh,110px)' }}>
+            <div style={{ padding: 32, borderRadius: 20, background: 'rgba(122,100,51,0.08)', textAlign: 'center' as const, color: F_OAT_BROWN, opacity: .7 }}>
+              Aún sin proyectos.
+            </div>
           </div>
+        ) : (
+          <FamColeccionPin
+            proyectos={data.proyectos}
+            onOpenAll={() => setAllProjOpen(true)}
+          />
         )}
       </section>
 
-      {/* ── 04 Momentos ── */}
-      {positiveActions.length > 0 && (
-        <section style={{ background: 'linear-gradient(180deg, #FAEFC6 0%, #F6E8B6 100%)', padding: '40px 24px' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 20 }}>
-            <span style={sectionNumStyle as React.CSSProperties}>04</span>
-            <div style={{ paddingTop: 8 }}>
-              <div style={eyebrow}>Actitud</div>
-              <div style={displayH}>Momentos</div>
+      {/* ── 04 MOMENTOS ─────────────────────────────────────────────────────── */}
+      <section style={{ ...SCENE, background: F_YELLOW2 }}>
+        <FamWave fill={F_YELLOW2} />
+        <div style={INNER}>
+          <div style={{ fontFamily: 'var(--font-fraunces, Georgia, serif)', fontWeight: 300, fontSize: 'clamp(80px,15vw,140px)', color: 'rgba(62,111,168,0.07)', lineHeight: 1, marginBottom: -20, userSelect: 'none', pointerEvents: 'none' }}>04</div>
+          <RevealDiv delay="0.1s"><div style={EYEBROW}>En el aula</div></RevealDiv>
+          <RevealDiv delay="0.25s"><h2 style={HEADING}>Momentos que merecen un <em style={{ fontStyle: 'italic' }}>marco.</em></h2></RevealDiv>
+          <RevealDiv delay="0.4s"><p style={LEDE}>Actitudes positivas que {data.nombre} ha demostrado en clase y que queremos que la familia conozca.</p></RevealDiv>
+          {positiveActions.length === 0 ? (
+            <div style={{ padding: 32, borderRadius: 20, background: 'rgba(62,111,168,0.06)', textAlign: 'center' as const, color: F_DEEP, opacity: .7 }}>
+              Sin momentos registrados aún.
             </div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {positiveActions.slice(0, 6).map((a) => (
-              <div key={a.id} style={{ background: 'rgba(255,255,255,.7)', backdropFilter: 'blur(10px)', borderRadius: 16, padding: '14px 16px', border: `1px solid rgba(251,176,59,.25)`, display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <path d="M5 13l4 4L19 7" stroke="#16a34a" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: F_INK }}>{a.nombre}</div>
-                  <div style={{ fontSize: 12, color: '#8aa4be', marginTop: 2 }}>
-                    {new Date(a.fecha).toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' })}
+          ) : (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 20 }}>
+                {positiveActions.slice(0, 4).map((a, i) => (
+                  <RevealDiv key={a.id} delay={`${0.5 + i * 0.1}s`}>
+                  <div style={{ background: '#FCF6E6', borderRadius: 18, padding: '24px 26px 24px 30px', position: 'relative', overflow: 'hidden', transition: 'transform 0.38s cubic-bezier(.2,.7,.2,1), box-shadow 0.38s' }}
+                    onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.transform = 'translateY(-5px)'; el.style.boxShadow = '0 26px 50px -32px rgba(120,90,20,.4)' }}
+                    onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.transform = ''; el.style.boxShadow = '' }}
+                  >
+                    <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: F_AMBER, borderRadius: '18px 0 0 18px' }} />
+                    <div style={{ position: 'absolute', top: 16, right: 16, fontSize: 11, fontWeight: 900, color: '#16a34a' }}>+{a.xp} XP</div>
+                    <div style={{ fontFamily: 'var(--font-fraunces, Georgia, serif)', fontWeight: 600, fontSize: 15, color: F_INK, marginBottom: 8, lineHeight: 1.35, paddingRight: 40 }}>
+                      {a.nombre}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#8aa4be', fontWeight: 600 }}>
+                      {new Date(a.fecha.includes('T') ? a.fecha : a.fecha + 'T12:00:00').toLocaleDateString('es', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    </div>
                   </div>
-                </div>
-                <span style={{ fontSize: 14, fontWeight: 900, color: '#16a34a', flexShrink: 0 }}>+{a.xp} XP</span>
+                  </RevealDiv>
+                ))}
               </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* ── Cierre ── */}
-      <section style={{ background: 'linear-gradient(165deg, #DDEAF8 0%, #C8DFF6 70%, #BAD3F0 100%)', padding: '56px 24px 80px', textAlign: 'center' as const }}>
-        <div style={{ fontFamily: 'var(--font-fraunces, Georgia, serif)', fontWeight: 300, fontSize: 'clamp(22px,5vw,34px)', fontStyle: 'italic', color: F_INK, lineHeight: 1.45, marginBottom: 36 }}>
-          Gracias por acompañar<br/>su aprendizaje.
+              {positiveActions.length > 4 && (
+                <button onClick={() => setMomentosOpen(true)} style={{ marginTop: 24, display: 'block', padding: '12px 28px', borderRadius: 999, background: 'transparent', border: `1.5px solid ${F_DEEP}`, color: F_DEEP, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+                  Ver todos los momentos →
+                </button>
+              )}
+            </>
+          )}
         </div>
-        <LogoFull />
       </section>
 
-      {/* ── Fixed switch button ── */}
-      <button
-        onClick={onSwitchToAlumno}
-        style={{
-          position: 'fixed', bottom: 24, right: 20, zIndex: 60,
-          display: 'flex', alignItems: 'center', gap: 7,
-          padding: '10px 18px', borderRadius: 30,
-          background: '#3E6FA8', color: '#fff',
-          border: 'none', cursor: 'pointer',
-          fontSize: 13, fontWeight: 800,
-          boxShadow: '0 4px 18px rgba(62,111,168,.35)',
-        }}
-      >
-        ← Alumno
-      </button>
+      {/* ── CIERRE ──────────────────────────────────────────────────────────── */}
+      <section style={{ ...SCENE, background: '#DDEAF8', textAlign: 'center' as const }}>
+        <FamWave fill="#DDEAF8" />
+        <div style={INNER}>
+          <div style={{ width: 64, height: 64, borderRadius: '50%', background: F_AMBER, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 28px' }}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+            </svg>
+          </div>
+          <div style={{ fontFamily: 'var(--font-fraunces, Georgia, serif)', fontWeight: 600, fontStyle: 'italic', fontSize: 'clamp(22px,4vw,36px)', color: F_INK, lineHeight: 1.5, maxWidth: 580, margin: '0 auto 16px' }}>
+            &ldquo;Gracias por acompañar el aprendizaje de <strong style={{ fontStyle: 'normal' }}>{data.nombre}.</strong>&rdquo;
+          </div>
+          <div style={{ fontSize: 15, color: F_DEEP, fontWeight: 700, marginBottom: 6 }}>El equipo de Ignite</div>
+          <div style={{ fontSize: 13, color: F_INK, opacity: .45, marginBottom: 48 }}>Seguimos construyendo juntos.</div>
+          <LogoFull />
+        </div>
+      </section>
 
+      {allProjOpen && <AllProyectosOverlay proyectos={data.proyectos} nombre={data.nombre} onClose={() => setAllProjOpen(false)} />}
+      {momentosOpen && <MomentosModal acciones={data.actitud} onClose={() => setMomentosOpen(false)} />}
     </div>
   )
 }
@@ -3143,7 +3835,7 @@ export function StudentPortal({ data }: { data: StudentPortalData }) {
     <div
       data-theme={theme}
       className="theme-student"
-      style={{ width: '100%', minHeight: '100dvh', background: 'var(--warm)', color: 'var(--sp-text)', fontFamily: 'var(--font-figtree), system-ui, sans-serif', paddingTop: 60, position: 'relative', overflowX: 'hidden' }}
+      style={{ width: '100%', minHeight: '100dvh', background: 'var(--warm)', color: 'var(--sp-text)', fontFamily: 'var(--font-figtree), system-ui, sans-serif', paddingTop: 60, position: 'relative' }}
     >
       <style dangerouslySetInnerHTML={{ __html: `@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}@keyframes spin{to{transform:rotate(360deg)}}@keyframes bob{0%,100%{transform:translateY(1.5px)}50%{transform:translateY(-4px)}}@keyframes rbob{0%,100%{transform:translateY(2px) rotate(-1deg)}50%{transform:translateY(-6px) rotate(1deg)}}@keyframes flame{from{transform:scaleY(.85) scaleX(1.06)}to{transform:scaleY(1.15) scaleX(.94)}}@keyframes drift1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(10vmin,7vmin) scale(1.15)}}@keyframes drift2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-11vmin,-8vmin) scale(1.12)}}@keyframes drift3{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(9vmin,-9vmin) scale(1.18)}}@keyframes glowpulse{0%,100%{opacity:.25}50%{opacity:.38}}@keyframes pan1{to{background-position:220px 0}}@keyframes pan2{to{background-position:-300px 120px}}@keyframes tw{0%,100%{opacity:.6}50%{opacity:.3}}@keyframes shoot{0%{transform:translate(0,0) rotate(18deg);opacity:0}4%{opacity:.7}12%{transform:translate(60vw,22vh) rotate(18deg);opacity:0}100%{opacity:0}}@keyframes ar{0%,100%{transform:translateX(0)}50%{transform:translateX(5px)}}` }} />
       <Topbar lang={lang} onLangChange={setLang} profileMode={profileMode} onCollapsedChange={setCollapsed} />
