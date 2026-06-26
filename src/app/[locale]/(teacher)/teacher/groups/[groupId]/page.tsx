@@ -121,12 +121,9 @@ export default async function TeacherGroupPage({
               planningId={detail.planning.planningId}
               currentProjectId={detail.closestSession?.projectId ?? detail.planning.currentProjectId}
               currentProjectName={detail.closestSession?.projectName ?? detail.planning.currentProjectName}
-              todaySlot={detail.todaySlot}
-              isClassToday={detail.isClassToday}
               students={detail.students}
               session={detail.closestSession}
               sessionDate={detail.closestSession?.sessionDate ?? null}
-              nextSessionDate={detail.closestSession?.sessionDate ?? null}
               successors={detail.planning.successors}
               groupSchedule={detail.schedule}
             />

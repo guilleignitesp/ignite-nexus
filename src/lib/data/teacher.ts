@@ -97,10 +97,6 @@ export interface GroupDetail {
   students: EnrolledStudent[]
   planning: GroupPlanningData | null
   closestSession: TodaySession | null
-  /** true si hoy es un día de clase según el horario del grupo */
-  isClassToday: boolean
-  /** Horario del día de hoy si hay clase */
-  todaySlot: ScheduleSlot | null
   recentSessions: SessionHistoryItem[]
 }
 
@@ -187,13 +183,6 @@ type RawHistorySession = {
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
-
-function jsWeekday(): number {
-  // JS getDay() → 0=Dom,1=Lun…6=Sáb; DB: 1=Lun…5=Vie
-  const day = new Date().getDay()
-  return day === 0 ? 7 : day  // Dom→7, el resto coincide
-}
-
 
 function latestLog(logs: RawProjectLog[]): RawProjectLog | null {
   if (!logs || logs.length === 0) return null
@@ -319,10 +308,6 @@ async function buildGroupDetail(g: RawGroup): Promise<GroupDetail> {
 
   const activePlannings = (g.plannings ?? []).filter((p) => p.is_active)
   const rawPlanning = activePlannings[0] ?? null
-
-  const todayWd = jsWeekday()
-  const todaySlotRaw = schedule.find((s) => s.weekday === todayWd) ?? null
-  const isClassToday = todaySlotRaw !== null
 
   // Extract map data before async fetch (no DB calls needed here)
   let log: RawProjectLog | null = null
@@ -488,8 +473,6 @@ async function buildGroupDetail(g: RawGroup): Promise<GroupDetail> {
     students,
     planning,
     closestSession,
-    isClassToday,
-    todaySlot: todaySlotRaw,
     recentSessions,
   }
 }

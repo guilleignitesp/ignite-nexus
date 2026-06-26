@@ -74,6 +74,40 @@ The following values existed in the DB schema before the May 2026 migration and 
 
 **Action required**: Run a migration to convert any remaining rows with these legacy statuses.
 
+## TodaySessionSection Render Logic
+
+`TodaySessionSection` is the teacher-facing component that surfaces the current session for a group. It uses a simplified two-branch model:
+
+**Data source — `closestSession`:**
+```ts
+// src/lib/data/teacher.ts — fetchClosestSession
+supabase
+  .from('sessions')
+  .select(SESSION_FIELDS)
+  .eq('planning_id', planningId)
+  .not('status', 'in', '(completed,excused)')
+  .order('session_date', { ascending: true })
+  .limit(1)
+```
+Returns the chronologically **oldest pending session** for the active planning. There is no "today" logic — `closestSession` is purely the earliest unfinished session, regardless of date.
+
+**Component branches:**
+
+| Condition | Renders |
+|-----------|---------|
+| `session === null` | Empty state: "No hay ninguna sesión pendiente." |
+| `session !== null` | `ActiveSessionForm` for the pending session |
+
+**Removed logic (June 2026):**
+- `isClassToday` — checked if today matched the group schedule weekday
+- `isFuturePending` — detected pending sessions in the future
+- `todaySlot` — schedule slot for today's weekday
+- "Iniciar sesión" button — created a new session via `createTodaySession` server action
+- Overdue warning banner
+- `createTodaySession` server action — deleted entirely from `teacher-sessions.ts`
+
+The component now has zero awareness of dates or schedules — it simply shows the oldest pending session or an empty state.
+
 ## TypeScript Types
 
 ```ts

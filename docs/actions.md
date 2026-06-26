@@ -26,7 +26,6 @@ Teacher-facing session management.
 
 | Function | Auth | Description |
 |---------|------|-------------|
-| `createTodaySession` | worker | Create (or no-op if exists) today's session for a group |
 | `finalizeSession` | worker + group | Mark session completed, inherit project to next pending |
 | `saveSession` | worker + group | Update session project, traffic light, comment, attendances (no lock) |
 | `submitProjectEvaluation` | worker + group | Upsert evaluations + skills + award XP to all students |

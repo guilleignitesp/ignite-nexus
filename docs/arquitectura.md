@@ -94,7 +94,7 @@ ignite-nexus/
 ├── src/
 │   ├── app/                       # App Router de Next.js
 │   │   ├── layout.tsx             # Root layout: shell HTML, fuentes, metadata global
-│   │   ├── globals.css            # Estilos globales, variables CSS de Tailwind v4, tema gamificado (.theme-student)
+│   │   ├── globals.css            # Estilos globales, variables CSS de Tailwind v4; temas: .theme-student (gamificado) y .theme-teacher (paleta oat/cream #FEFCF8, ámbar #FBB03B, azul suave rgba(62,111,168,*))
 │   │   │
 │   │   └── [locale]/              # Segmento dinámico: 'es', 'en', 'ca'
 │   │       ├── layout.tsx         # Locale layout: valida locale, provee NextIntlClientProvider con mensajes
@@ -118,7 +118,7 @@ ignite-nexus/
 │   │       │       └── resources/page.tsx
 │   │       │
 │   │       ├── (teacher)/         # Route group profesor
-│   │       │   ├── layout.tsx     # Guard requireWorker + TeacherNav
+│   │       │   ├── layout.tsx     # Guard requireWorker + TeacherNav + aplica .theme-teacher (paleta oat/cream, ámbar)
 │   │       │   └── teacher/
 │   │       │       ├── home/page.tsx
 │   │       │       ├── groups/[groupId]/page.tsx
@@ -136,7 +136,7 @@ ignite-nexus/
 │   │
 │   ├── components/
 │   │   ├── admin/                 # Componentes exclusivos del panel de administración
-│   │   │   ├── AdminSidebar.tsx   # Sidebar con filtrado por módulos según perfil del admin
+│   │   │   ├── AdminSidebar.tsx   # Sidebar con filtrado por módulos según perfil del admin; incluye LogoFull() en cabecera y enlace "Panel profesor" (pill ámbar) en el footer
 │   │   │   ├── schools/           # SchoolsList, AddSchoolDialog, AddGroupDialog
 │   │   │   ├── teachers/          # TeachersList, AddTeacherDialog, PermissionsGrid
 │   │   │   ├── students/          # StudentsList, EditStudentDialog, GroupsCard, XPTrajectory, EvaluationHistory, AttitudeLog
@@ -147,13 +147,15 @@ ignite-nexus/
 │   │   │   ├── absences/          # AbsencesAdminList
 │   │   │   └── resources/         # ResourcesAdminList, ResourceDialog
 │   │   │
-│   │   ├── auth/                  # LoginForm
+│   │   ├── auth/                  # LoginForm — rediseñado con fondo degradado, card de cristal, logo Ignite Nexus, paleta ámbar; sin dependencias de shadcn/ui
 │   │   ├── teacher/
-│   │   │   ├── TeacherNav.tsx     # Barra de navegación del profesor
+│   │   │   ├── TeacherNav.tsx     # Barra de navegación del profesor — efecto glass (backdrop-filter blur + fondo semitransparente), enlaces con indicador activo ámbar
 │   │   │   ├── group/             # ActiveSessionForm, FinalizeDialog, EvaluationModal, SessionHistoryList, TodaySessionSection, AttitudeModal, AttitudeButton, AttendanceHistorySection, ProjectMapReadOnly
 │   │   │   ├── timesheet/         # TimesheetToggle, TimesheetHistoryList
 │   │   │   ├── absences/          # AbsencesList, RequestAbsenceDialog
 │   │   │   └── resources/         # ResourcesList
+│   │   ├── student/
+│   │   │   └── StudentPortal.tsx  # Portal gamificado alumno/familia (componente monolítico): FamSeal (sello SVG circular), FamColeccionPin (pin scroll de colección de proyectos), RevealDiv+useFadeIn (IntersectionObserver fade-in), BRANCH_KEY_MAP (normalización de claves de rama para BRANCH_MINI)
 │   │   └── ui/                    # Componentes base de shadcn/ui copiados y personalizados
 │   │       ├── button.tsx         # Variantes: default, outline, ghost, destructive, secondary
 │   │       ├── input.tsx
@@ -188,7 +190,7 @@ ignite-nexus/
 │   │   │   ├── teachers.ts        # createWorker, toggleWorkerStatus, upsertModulePermission, setSuperAdmin
 │   │   │   ├── students.ts        # updateStudent, toggleStudentStatus, updateEvaluationMultiplier
 │   │   │   ├── enrollments.ts     # bulkEnroll, bulkDeactivate
-│   │   │   ├── teacher-sessions.ts # createTodaySession, saveSession, finalizeSession, getProjectSkillsForEvaluation, submitProjectEvaluation, updateProjectEvaluation, markSessionExcused, getProjectDetails, getSessionEvaluation, getSessionAttendances, getAttitudeActions, recordAttitudeAction
+│   │   │   ├── teacher-sessions.ts # saveSession, finalizeSession, getProjectSkillsForEvaluation, submitProjectEvaluation, updateProjectEvaluation, markSessionExcused, getProjectDetails, getSessionEvaluation, getSessionAttendances, getAttitudeActions, recordAttitudeAction
 │   │   │   ├── timesheets.ts      # recordTimesheet
 │   │   │   ├── absences.ts        # requestAbsence, approveAbsence, rejectAbsence
 │   │   │   ├── global-resources.ts # createGlobalResource, updateGlobalResource, toggleGlobalResourceStatus
@@ -792,7 +794,7 @@ Admin genera sesiones
   → sessions row (status='pending', planning_id, session_date)
 
 Profesor abre la página del grupo
-  → busca la sesión de hoy (createTodaySession si no existe)
+  → busca la sesión pending más antigua (closestSession — sin createTodaySession)
   → profesor guarda progreso → session actualizada (project_id, asistencias)
   → profesor finaliza → status='completed', is_consolidated=true
                       → siguiente sesión pending hereda project_id
@@ -1014,7 +1016,7 @@ Todos los módulos del panel de administración completados hasta la fecha, con 
 
 | Componente | Descripción |
 |-----------|-------------|
-| `TodaySessionSection` | Orquesta la sección de sesión del día: detecta sesiones vencidas, futuras pending y sesiones activas. Botón "Iniciar sesión" cuando no hay sesión. |
+| `TodaySessionSection` | Muestra la sesión pending más antigua (`closestSession`). Dos ramas: sesión presente → `ActiveSessionForm`; sin sesión pending → mensaje "No hay ninguna sesión pendiente." Sin lógica de `isClassToday` ni `isFuturePending`. |
 | `ActiveSessionForm` | Formulario de sesión activa: lista de asistencia (checkbox por alumno), comentario del profesor, semáforo, botones Guardar / Finalizar / Marcar desconocida / Marcar excusada. |
 | `FinalizeDialog` | Diálogo de finalización: selección de semáforo + checkbox "proyecto completado". Si se completa el proyecto, abre `EvaluationModal` antes de confirmar. |
 | `EvaluationModal` | Modal de evaluación de proyecto: tabla alumnos × habilidades con multiplicador de XP (30–150% en pasos de 10%). En modo edición (historial) usa `updateProjectEvaluation`. Selector de proyecto siguiente como grid de cards con barra de progreso y etiqueta si los datos vienen del mapa. |
