@@ -12,28 +12,22 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { WeekSession, ActiveAssignment } from '@/lib/data/sessions-dashboard'
-import {
-  getWorkerAvailability,
-  addSubstitute,
-  type AvailabilityResult,
-  type WorkerLayerItem,
-} from '@/lib/actions/sessions-dashboard'
+import type { StaffingSlot, SlotRef, WorkerLayerItem, WorkerAvailabilityResult } from '@/lib/data/schools'
+import { getWorkerAvailability, addSubstitute } from '@/lib/actions/sessions-dashboard'
 
 interface Props {
-  session: WeekSession
-  assignments: ActiveAssignment[]
+  slot: StaffingSlot
   onClose: () => void
 }
 
 interface WorkerRowProps {
   worker: WorkerLayerItem
-  sessionId: string
+  slot: SlotRef
   showAdd: boolean
   onAdded: () => void
 }
 
-function WorkerRow({ worker, sessionId, showAdd, onAdded }: WorkerRowProps) {
+function WorkerRow({ worker, slot, showAdd, onAdded }: WorkerRowProps) {
   const t = useTranslations('sessionsDashboard')
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -43,7 +37,7 @@ function WorkerRow({ worker, sessionId, showAdd, onAdded }: WorkerRowProps) {
     setError(null)
     startTransition(async () => {
       try {
-        await addSubstitute(sessionId, worker.id)
+        await addSubstitute(slot, worker.id)
         router.refresh()
         onAdded()
       } catch (e) {
@@ -89,17 +83,19 @@ function WorkerRow({ worker, sessionId, showAdd, onAdded }: WorkerRowProps) {
 function WorkerSection({
   title,
   workers,
-  sessionId,
+  slot,
   showAdd,
   titleColor,
   onAdded,
+  warning,
 }: {
   title: string
   workers: WorkerLayerItem[]
-  sessionId: string
+  slot: SlotRef
   showAdd: boolean
   titleColor?: string
   onAdded: () => void
+  warning?: string
 }) {
   if (workers.length === 0) return null
 
@@ -117,14 +113,13 @@ function WorkerSection({
       >
         {title} ({workers.length})
       </div>
+      {warning && (
+        <div style={{ fontSize: '0.7rem', color: titleColor ?? 'var(--muted-foreground)', marginBottom: '0.375rem', fontStyle: 'italic' }}>
+          ⚠ {warning}
+        </div>
+      )}
       {workers.map((w) => (
-        <WorkerRow
-          key={w.id}
-          worker={w}
-          sessionId={sessionId}
-          showAdd={showAdd}
-          onAdded={onAdded}
-        />
+        <WorkerRow key={w.id} worker={w} slot={slot} showAdd={showAdd} onAdded={onAdded} />
       ))}
     </div>
   )
@@ -140,27 +135,30 @@ function filterWorkers(workers: WorkerLayerItem[], q: string): WorkerLayerItem[]
   return workers.filter((w) => norm(w.firstName).includes(nq) || norm(w.lastName).includes(nq))
 }
 
-export function SubstitutePanel({ session, assignments, onClose }: Props) {
+export function SubstitutePanel({ slot, onClose }: Props) {
   const t = useTranslations('sessionsDashboard')
-  const [availability, setAvailability] = useState<AvailabilityResult | null>(null)
+  const [availability, setAvailability] = useState<WorkerAvailabilityResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [workerSearch, setWorkerSearch] = useState('')
 
+  const slotRef: SlotRef = {
+    groupId: slot.groupId,
+    slotDate: slot.slotDate,
+    startTime: slot.startTime,
+    endTime: slot.endTime,
+  }
+
   useEffect(() => {
     setLoading(true)
     setError(null)
-    getWorkerAvailability(session.id)
-      .then((result) => {
-        setAvailability(result)
-      })
-      .catch((e) => {
-        setError(e instanceof Error ? e.message : 'Error loading availability')
-      })
+    getWorkerAvailability(slotRef)
+      .then((result) => setAvailability(result))
+      .catch((e) => setError(e instanceof Error ? e.message : 'Error loading availability'))
       .finally(() => setLoading(false))
-  }, [session.id])
+  }, [slot.groupId, slot.slotDate, slot.startTime])
 
-  const timeLabel = `${session.startTime.slice(0, 5)}–${session.endTime.slice(0, 5)}`
+  const timeLabel = `${slot.startTime.slice(0, 5)}–${slot.endTime.slice(0, 5)}`
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
@@ -204,29 +202,30 @@ export function SubstitutePanel({ session, assignments, onClose }: Props) {
             <WorkerSection
               title={t('p1Title')}
               workers={filterWorkers(availability.p1Surplus, workerSearch)}
-              sessionId={session.id}
+              slot={slotRef}
               showAdd
               onAdded={onClose}
             />
             <WorkerSection
               title={t('p2Title')}
               workers={filterWorkers(availability.p2Free, workerSearch)}
-              sessionId={session.id}
+              slot={slotRef}
               showAdd
               onAdded={onClose}
             />
             <WorkerSection
               title={t('p3Title')}
               workers={filterWorkers(availability.p3Critical, workerSearch)}
-              sessionId={session.id}
-              showAdd={false}
+              slot={slotRef}
+              showAdd={true}
               titleColor="var(--destructive)"
+              warning="Clase con mínimo justo — quedará sin cobertura"
               onAdded={onClose}
             />
             <WorkerSection
               title={t('p4Title')}
               workers={filterWorkers(availability.p4Unavailable, workerSearch)}
-              sessionId={session.id}
+              slot={slotRef}
               showAdd={false}
               titleColor="var(--muted-foreground)"
               onAdded={onClose}
@@ -234,7 +233,7 @@ export function SubstitutePanel({ session, assignments, onClose }: Props) {
             <WorkerSection
               title={t('p5Title')}
               workers={filterWorkers(availability.p5Inactive, workerSearch)}
-              sessionId={session.id}
+              slot={slotRef}
               showAdd={false}
               titleColor="var(--muted-foreground)"
               onAdded={onClose}

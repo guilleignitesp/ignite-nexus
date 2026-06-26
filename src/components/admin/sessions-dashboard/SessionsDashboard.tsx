@@ -4,60 +4,39 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
-import type {
-  DashboardSchool,
-  WeekSession,
-  ActiveAssignment,
-} from '@/lib/data/sessions-dashboard'
-import type { Worker } from '@/lib/data/schools'
+import type { StaffingSlot, Worker } from '@/lib/data/schools'
 import { addDays } from '@/lib/utils/week-helpers'
 import { WeekGrid } from './WeekGrid'
-import { SessionDetailPanel } from './SessionDetailPanel'
+import { SlotDetailPanel } from './SlotDetailPanel'
 import { AuditPanel } from './AuditPanel'
 
 interface Props {
-  schools: DashboardSchool[]
-  sessions: WeekSession[]
-  assignments: ActiveAssignment[]
+  slots: StaffingSlot[]
   workers: Worker[]
   weekStart: string
   today: string
   locale: string
 }
 
-interface SelectedSession {
-  sessionId: string
-  groupName: string
-  schoolName: string
-}
-
-export function SessionsDashboard({
-  schools,
-  sessions,
-  assignments,
-  workers,
-  weekStart,
-  today,
-  locale,
-}: Props) {
+export function SessionsDashboard({ slots, workers, weekStart, today, locale }: Props) {
   const t = useTranslations('sessionsDashboard')
   const router = useRouter()
 
-  const [selectedSession, setSelectedSession] = useState<SelectedSession | null>(null)
+  const [selectedSlot, setSelectedSlot] = useState<StaffingSlot | null>(null)
   const [auditOpen, setAuditOpen] = useState(false)
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null)
 
-  const teams = Array.from(
-    new Map(
-      schools
-        .filter((s) => s.teamId)
-        .map((s) => [s.teamId!, { id: s.teamId!, name: s.teamName ?? s.teamId! }])
-    ).values()
-  )
+  const teamsMap = new Map<string, { id: string; name: string }>()
+  for (const slot of slots) {
+    if (slot.teamId && !teamsMap.has(slot.teamId)) {
+      teamsMap.set(slot.teamId, { id: slot.teamId, name: slot.teamName ?? slot.teamId })
+    }
+  }
+  const teams = [...teamsMap.values()]
 
-  const filteredSchools = selectedTeamId
-    ? schools.filter((s) => s.teamId === selectedTeamId)
-    : schools
+  const filteredSlots = selectedTeamId
+    ? slots.filter((s) => s.teamId === selectedTeamId)
+    : slots
 
   const workerNames = new Map<string, string>()
   for (const w of workers) {
@@ -125,34 +104,21 @@ export function SessionsDashboard({
         </div>
       )}
 
-      {/* The grid */}
       <WeekGrid
-        schools={filteredSchools}
-        sessions={sessions}
-        assignments={assignments}
+        slots={filteredSlots}
         workerNames={workerNames}
         weekStart={weekStart}
         today={today}
-        onSessionClick={(session, groupName, schoolName) =>
-          setSelectedSession({ sessionId: session.id, groupName, schoolName })
-        }
+        onSlotClick={setSelectedSlot}
       />
 
-      {/* Session detail panel */}
-      {selectedSession && (() => {
-        const currentSession = sessions.find(s => s.id === selectedSession.sessionId)
-        if (!currentSession) return null
-        return (
-          <SessionDetailPanel
-            session={currentSession}
-            groupName={selectedSession.groupName}
-            schoolName={selectedSession.schoolName}
-            assignments={assignments.filter(a => a.groupId === currentSession.groupId)}
-            workerNames={workerNames}
-            onClose={() => setSelectedSession(null)}
-          />
-        )
-      })()}
+      {selectedSlot && (
+        <SlotDetailPanel
+          slot={selectedSlot}
+          workerNames={workerNames}
+          onClose={() => setSelectedSlot(null)}
+        />
+      )}
 
       <AuditPanel open={auditOpen} onClose={() => setAuditOpen(false)} />
     </div>

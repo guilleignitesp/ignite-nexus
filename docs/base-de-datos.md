@@ -100,6 +100,7 @@ Horario semanal de un grupo. Cada fila es un bloque horario (día + hora).
 | `weekday` | smallint CHECK (1-5) | 1=Lunes, 2=Martes, …, 5=Viernes |
 | `start_time` | time NOT NULL | Hora de inicio de la sesión |
 | `end_time` | time NOT NULL | Hora de fin |
+| `min_teachers_required` | smallint NOT NULL DEFAULT 1 CHECK > 0 | Mínimo de profesores necesarios para este slot. **Fuente canónica** del mínimo — independiente de `sessions`. Escrito por `updateSlotMinTeachers`, leído por `getWeekStaffing` y `getWorkerAvailability`. Añadido en migración 022. |
 
 ---
 
@@ -362,12 +363,16 @@ Registro de asistencia por alumno por sesión.
 ---
 
 #### `session_teacher_assignments`
-Cambios de profesor en una sesión (sustituciones o ausencias).
+Cambios de profesor por slot: sustituciones, ausencias, altas/bajas puntuales. Soporta dos formas: **session-scoped** (legacy, `session_id NOT NULL`) y **slot-scoped** (nuevo, `session_id = NULL` + campos de slot). Añadidos en migración 021.
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
 | `id` | uuid PK | — |
-| `session_id` | uuid FK → sessions.id ON DELETE CASCADE | — |
+| `session_id` | uuid FK → sessions.id ON DELETE CASCADE **NULLABLE** | Nulo en STAs slot-scoped (migración 021) |
+| `group_id` | uuid FK → groups.id ON DELETE CASCADE | Requerido en STAs slot-scoped. Nulo en session-scoped legacy. |
+| `slot_date` | date | Requerido en STAs slot-scoped. |
+| `start_time_local` | time | Requerido en STAs slot-scoped. |
+| `end_time_local` | time | Requerido en STAs slot-scoped. |
 | `worker_id` | uuid FK → workers.id | Profesor afectado |
 | `type` | text CHECK ('substitute','absent') | Tipo de cambio |
 | `valid_from` | date NOT NULL | Desde cuándo aplica |
@@ -375,22 +380,41 @@ Cambios de profesor en una sesión (sustituciones o ausencias).
 | `is_active` | boolean NOT NULL default true | — |
 | `created_at` | timestamptz NOT NULL default now() | — |
 
+**CHECK constraint `sta_needs_session_or_slot`**: `session_id IS NOT NULL OR (group_id IS NOT NULL AND slot_date IS NOT NULL AND start_time_local IS NOT NULL AND end_time_local IS NOT NULL)`
+
+**Índices**:
+- `idx_sta_slot` — `(group_id, slot_date) WHERE group_id IS NOT NULL AND is_active = true` — lookup de STAs slot-scoped activas
+- `idx_sta_worker_date` — `(worker_id, slot_date) WHERE is_active = true` — disponibilidad de un worker en una fecha
+
 ---
 
 #### `dashboard_change_log`
-Auditoría de cambios en sesiones. Almacena estados previo y nuevo en JSONB.
+Auditoría de cambios del dashboard de staffing. Almacena estados previo y nuevo en JSONB. Soporta cambios session-scoped (`session_id NOT NULL`) y slot-scoped (`session_id = NULL, group_id NOT NULL`).
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
 | `id` | uuid PK | — |
-| `session_id` | uuid FK → sessions.id | Sesión modificada |
-| `worker_id` | uuid FK → workers.id ON DELETE SET NULL | Worker que realizó el cambio |
-| `changed_by` | uuid FK → workers.id ON DELETE SET NULL | (reservado para futuro) |
-| `change_type` | text NOT NULL | Tipo de cambio: 'status', 'traffic_light', etc. |
-| `previous_state` | jsonb | Estado anterior (snapshot) |
-| `new_state` | jsonb | Estado nuevo (snapshot) |
-| `is_reverted` | boolean NOT NULL default false | Si se revirtió el cambio |
+| `session_id` | uuid FK → sessions.id **NULLABLE** | Nulo para cambios slot-scoped o de configuración (migración 017) |
+| `group_id` | uuid FK → groups.id | Clave de scope para cambios slot-scoped. Añadido en migración 017. |
+| `worker_id` | uuid FK → workers.id ON DELETE SET NULL | Worker afectado. Nulo en `min_teachers_update`. |
+| `changed_by` | uuid FK → workers.id ON DELETE SET NULL | Admin que realizó el cambio |
+| `change_type` | text NOT NULL | Ver tabla de valores abajo |
+| `previous_state` | jsonb | Estado anterior |
+| `new_state` | jsonb | Estado nuevo. En `substitute_add`: incluye `auto_absence_ids[]` con IDs de STAs de ausencia automática. |
+| `is_reverted` | boolean NOT NULL default false | — |
 | `changed_at` | timestamptz NOT NULL default now() | — |
+
+**Valores de `change_type`**:
+
+| Valor | Reversible | Notas |
+|-------|-----------|-------|
+| `substitute_add` | Sí | Revierte también `new_state.auto_absence_ids[]` |
+| `substitute_remove` | Sí | — |
+| `absent_mark` | Sí | — |
+| `absent_unmark` | Sí | — |
+| `permanent_add` | Sí | — |
+| `permanent_remove` | Sí | — |
+| `min_teachers_update` | No | Informativo. `worker_id = null`, `group_id` presente. |
 
 ---
 
@@ -1104,6 +1128,134 @@ global_resources:
 
   ALL    → admin_manage_resources       USING (can_manage('resources'))
   ↳ El admin con módulo 'resources' puede crear, editar y desactivar
+```
+
+#### Migración 014 — RLS sessions dashboard
+
+```
+session_teacher_assignments:
+  SELECT → admin_read_session_teacher_assignments  USING (is_admin())
+  ALL    → dashboard_write_session_teacher_assignments  USING (can_manage('sessions_dashboard'))
+
+group_assignments:
+  ALL    → dashboard_write_group_assignments  USING (can_manage('sessions_dashboard'))
+
+dashboard_change_log:
+  SELECT → admin_read_dashboard_change_log  USING (is_admin())
+  ALL    → dashboard_write_change_log       USING (can_manage('sessions_dashboard'))
+```
+
+#### Migración 015 — RLS Bloque 5 (attitudes, timesheet admin, stock)
+
+```
+attitude_actions:
+  ALL    → attitudes_write     USING (can_manage('attitudes'))
+
+timesheets:
+  ALL    → admin_manage_timesheets  USING (can_manage('timesheet'))
+
+stock_locations, stock_items:
+  ALL    → stock_write_*   USING (can_manage('stock'))
+
+stock_movements:
+  SELECT → authenticated read
+  ALL    → stock_write_movements  USING (can_manage('stock'))
+```
+
+#### Migración 016 — Correcciones de esquema stock
+
+```
+stock_locations: ADD COLUMN is_active boolean
+stock_items: RENAME current_holder_type → holder_type, current_holder_id → holder_id
+             ADD COLUMN quantity integer, ADD COLUMN is_active boolean
+             DROP COLUMN status
+stock_movements: RENAME stock_item_id → item_id, from/to_holder_* → from/to_*
+```
+
+#### Migración 017 — Nullable session_id en dashboard_change_log
+
+```
+dashboard_change_log:
+  ALTER session_id DROP NOT NULL
+  ADD COLUMN group_id uuid FK → groups.id
+  ↳ Permite registrar cambios slot-scoped (permanent assignments, min_teachers_update)
+    sin necesidad de que exista una sesión.
+```
+
+#### Migración 018 — RLS lectura de alumnos para profesores
+
+```
+students:
+  SELECT → teacher_read_group_students
+    USING (EXISTS group_enrollments JOIN group_assignments WHERE ga.worker_id = get_my_worker_id())
+  ↳ Necesario para que getGroupDetail del profesor cargue los alumnos matriculados
+    sin tener acceso admin.
+```
+
+#### Migración 019 — Añade 'unknown' y 'excused' al CHECK de sessions.status
+
+```
+sessions:
+  DROP CONSTRAINT sessions_status_check
+  ADD CONSTRAINT sessions_status_check
+    CHECK (status IN ('pending','completed','suspended','holiday','cancelled','unknown','excused'))
+  ↳ 'excused' fue el nuevo estado introducido en la simplificación del estado system.
+    Los valores legacy ('suspended','holiday','cancelled','unknown') siguen siendo válidos
+    en filas antiguas pero no se crean nuevos con esos valores.
+```
+
+#### Migración 020 — Portal del alumno
+
+```
+students: ADD COLUMN user_id uuid FK → auth.users(id) ON DELETE SET NULL
+CREATE INDEX idx_students_user_id
+
+Nueva función: get_my_student_id()
+  RETURNS uuid SECURITY DEFINER
+  ↳ Devuelve students.id del usuario autenticado actual
+
+Nuevas políticas RLS (alumno puede leer sus propios datos):
+  students: student_read_own (user_id = auth.uid() OR is_admin())
+  student_xp: student_read_own_xp
+  project_evaluations: student_read_own_evaluations
+  skill_evaluations: student_read_own_skill_evaluations
+  attitude_logs: student_read_own_attitude_logs
+  group_enrollments: student_read_own_enrollments
+  planning_project_log: student_read_own_project_log
+  sessions: student_read_own_sessions
+```
+
+#### Migración 021 — Desacoplar staffing de sessions
+
+```
+session_teacher_assignments:
+  ALTER session_id DROP NOT NULL
+  ADD COLUMN group_id uuid FK → groups.id ON DELETE CASCADE
+  ADD COLUMN slot_date date
+  ADD COLUMN start_time_local time
+  ADD COLUMN end_time_local time
+  ADD CONSTRAINT sta_needs_session_or_slot CHECK (
+    session_id IS NOT NULL OR (
+      group_id IS NOT NULL AND slot_date IS NOT NULL AND
+      start_time_local IS NOT NULL AND end_time_local IS NOT NULL
+    )
+  )
+  CREATE INDEX idx_sta_slot (group_id, slot_date) WHERE group_id IS NOT NULL AND is_active = true
+  CREATE INDEX idx_sta_worker_date (worker_id, slot_date) WHERE is_active = true
+  ↳ Permite crear STAs sin session — el dashboard de staffing construye la malla desde
+    group_schedule, no desde sessions.
+```
+
+#### Migración 022 — Mínimo de profesores en group_schedule
+
+```
+group_schedule:
+  ADD COLUMN min_teachers_required smallint NOT NULL DEFAULT 1 CHECK (min_teachers_required > 0)
+  ↳ Fuente canónica del mínimo de profesores por slot.
+    Antes se leía de sessions.min_teachers_required, pero ese valor se volvía obsoleto
+    cuando no había sesión generada o cuando la sesión era de una planificación inactiva.
+    Ahora getWeekStaffing y getWorkerAvailability leen este valor directamente.
+    updateSlotMinTeachers escribe aquí (y opcionalmente en la sesión si existe).
 ```
 
 #### Cambios de esquema en tiempo de ejecución (fuera de migraciones numeradas)

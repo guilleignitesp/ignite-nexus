@@ -1,13 +1,7 @@
 import { getTranslations } from 'next-intl/server'
 import { requireAdmin } from '@/lib/auth'
-import {
-  getSchoolsForDashboard,
-  getWeekSessions,
-  getActiveGroupAssignments,
-  getMondayOf,
-  addDays,
-} from '@/lib/data/sessions-dashboard'
-import { getActiveWorkers } from '@/lib/data/schools'
+import { getWeekStaffing, getActiveWorkers } from '@/lib/data/schools'
+import { getMondayOf, addDays } from '@/lib/utils/week-helpers'
 import { SessionsDashboard } from '@/components/admin/sessions-dashboard/SessionsDashboard'
 
 export default async function SessionsDashboardPage({
@@ -26,11 +20,9 @@ export default async function SessionsDashboardPage({
   const weekStart = getMondayOf(week ?? today)
   const weekEnd = addDays(weekStart, 4)
 
-  const [t, schools, sessions, assignments, workers] = await Promise.all([
+  const [t, slots, workers] = await Promise.all([
     getTranslations('sessionsDashboard'),
-    getSchoolsForDashboard(),
-    getWeekSessions(weekStart, weekEnd),
-    getActiveGroupAssignments(),
+    getWeekStaffing(weekStart, weekEnd),
     getActiveWorkers(),
   ])
 
@@ -41,9 +33,7 @@ export default async function SessionsDashboardPage({
         <p className="mt-1 text-sm text-muted-foreground">{t('pageDescription')}</p>
       </div>
       <SessionsDashboard
-        schools={schools}
-        sessions={sessions}
-        assignments={assignments}
+        slots={slots}
         workers={workers}
         weekStart={weekStart}
         today={today}

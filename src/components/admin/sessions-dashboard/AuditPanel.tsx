@@ -34,6 +34,7 @@ function formatChangeType(
     absent_unmark: t('changeType.absent_unmark'),
     permanent_add: t('changeType.permanent_add'),
     permanent_remove: t('changeType.permanent_remove'),
+    min_teachers_update: 'Mínimo actualizado',
   }
   return map[changeType] ?? changeType
 }
@@ -160,7 +161,22 @@ export function AuditPanel({ open, onClose }: Props) {
 
           {!loading && entries.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingTop: '0.75rem' }}>
-              {entries.map((entry) => (
+              {(() => {
+                const autoAbsenceAssignmentIds = new Set<string>()
+                for (const entry of entries) {
+                  if (entry.changeType === 'substitute_add') {
+                    for (const id of entry.autoAbsenceIds ?? []) {
+                      autoAbsenceAssignmentIds.add(id)
+                    }
+                  }
+                }
+                const displayEntries = entries.filter((entry) => {
+                  if (entry.changeType !== 'absent_mark') return true
+                  const assignmentId = (entry.newState as { assignment_id?: string } | undefined)?.assignment_id
+                  return !assignmentId || !autoAbsenceAssignmentIds.has(assignmentId)
+                })
+                return displayEntries
+              })().map((entry) => (
                 <div
                   key={entry.id}
                   style={{
@@ -214,7 +230,7 @@ export function AuditPanel({ open, onClose }: Props) {
                       </div>
                     </div>
 
-                    {!entry.isReverted && entry.isSessionChange && (
+                    {!entry.isReverted && (entry.isSessionChange || entry.changeType === 'substitute_add' || entry.changeType === 'absent_mark') && (
                       <Button
                         size="xs"
                         variant="outline"
@@ -226,6 +242,20 @@ export function AuditPanel({ open, onClose }: Props) {
                       </Button>
                     )}
                   </div>
+
+                  {entry.changeType === 'substitute_add' && (entry.autoAbsenceIds?.length ?? 0) > 0 && (
+                    <div style={{ fontSize: '0.7rem', color: 'var(--muted-foreground)', marginTop: '0.25rem', fontStyle: 'italic' }}>
+                      ↳ Ausencia automática aplicada en {entry.autoAbsenceIds!.length} clase{entry.autoAbsenceIds!.length !== 1 ? 's' : ''}
+                    </div>
+                  )}
+
+                  {entry.changeType === 'min_teachers_update' && entry.newState && (
+                    <div style={{ fontSize: '0.7rem', color: 'var(--muted-foreground)', marginTop: '0.25rem' }}>
+                      {(entry.newState as { min_teachers_required?: number }).min_teachers_required} profesor
+                      {(entry.newState as { min_teachers_required?: number }).min_teachers_required !== 1 ? 'es' : ''} requerido
+                      {(entry.newState as { min_teachers_required?: number }).min_teachers_required !== 1 ? 's' : ''}
+                    </div>
+                  )}
 
                   {revertErrors[entry.id] && (
                     <div

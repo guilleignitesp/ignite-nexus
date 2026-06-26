@@ -89,7 +89,16 @@ ignite-nexus/
 │       ├── 010_rls_validation.sql  # Políticas para plannings, planning_project_log, sessions (lectura)
 │       ├── 011_rls_sessions.sql    # RLS sesiones del profesor + función get_my_worker_id + índice único
 │       ├── 012_rls_hr_modules.sql  # RLS fichajes y ausencias
-│       └── 013_resources.sql       # Columnas resource_type/target_role + RLS recursos globales
+│       ├── 013_resources.sql       # Columnas resource_type/target_role + RLS recursos globales
+│       ├── 014_rls_dashboard.sql   # RLS session_teacher_assignments, group_assignments, dashboard_change_log
+│       ├── 015_rls_block5.sql      # RLS attitudes, timesheet admin, stock
+│       ├── 016_fix_stock_schema.sql # Renombrar columnas stock, añadir quantity/is_active
+│       ├── 017_fix_change_log.sql  # dashboard_change_log: session_id nullable + group_id
+│       ├── 018_rls_teacher_students.sql # Lectura de alumnos para profesores (teacher_read_group_students)
+│       ├── 019_session_status_unknown_excused.sql # Añade 'unknown' y 'excused' al CHECK de sessions.status
+│       ├── 020_student_portal.sql  # students.user_id + get_my_student_id() + RLS portal alumno
+│       ├── 021_decouple_staffing_from_sessions.sql # STAs slot-scoped: session_id nullable + nuevas columnas + índices
+│       └── 022_group_schedule_min_teachers.sql # group_schedule.min_teachers_required (fuente canónica)
 │
 ├── src/
 │   ├── app/                       # App Router de Next.js
@@ -145,7 +154,8 @@ ignite-nexus/
 │   │   │   ├── project-maps/      # MapsList, CreateMapDialog, MapEditor
 │   │   │   ├── validation/        # ValidationList, ValidationPanel
 │   │   │   ├── absences/          # AbsencesAdminList
-│   │   │   └── resources/         # ResourcesAdminList, ResourceDialog
+│   │   │   ├── resources/         # ResourcesAdminList, ResourceDialog
+│   │   │   └── sessions-dashboard/ # SessionsDashboard, WeekGrid, GroupDayCell, SlotDetailPanel, SubstitutePanel, PermanentAssignmentDialog, AuditPanel
 │   │   │
 │   │   ├── auth/                  # LoginForm — rediseñado con fondo degradado, card de cristal, logo Ignite Nexus, paleta ámbar; sin dependencias de shadcn/ui
 │   │   ├── teacher/
@@ -1068,6 +1078,71 @@ Todos los módulos del panel de administración completados hasta la fecha, con 
 - `hasEvaluation` calculado en `getGroupAdminDetail` mediante `Promise.all([sessionsQuery, logsQuery])` y un `Set<string>` de `project_id`s con evaluaciones — O(1) por sesión
 - `getSessionAttendancesForAdmin` idéntica a la versión del profesor pero con `assertSchoolsAccess()` en lugar del guard de teacher
 - `getSessionEvaluationForAdmin` ídem con `assertSchoolsAccess()`
+
+---
+
+### Dashboard de Staffing
+
+**Ruta:** `/admin/sessions`  
+**Descripción:** Panel de administración de staffing semanal. Muestra una malla de grupos × días de la semana. El admin puede gestionar ausencias, sustituciones y equipo permanente por slot. El sistema está **desacoplado de la tabla `sessions`** — la malla se construye desde `group_schedule` + `group_assignments` + `session_teacher_assignments`, sin requerir que existan sesiones.
+
+| Capa | Archivos |
+|------|---------|
+| Página | `src/app/[locale]/(admin)/admin/sessions/page.tsx` |
+| Datos | `src/lib/data/schools.ts` — `getWeekStaffing(weekStart, weekEnd)` devuelve `StaffingSlot[]` |
+| Acciones | `src/lib/actions/sessions-dashboard.ts` — ver docs/actions.md |
+| Componentes | `src/components/admin/sessions-dashboard/` |
+
+**Tipos clave:**
+
+```typescript
+// SlotRef — identificador de slot, input de todas las mutaciones de staffing
+type SlotRef = { groupId: string; slotDate: string; startTime: string; endTime: string }
+
+// StaffingSlot — estructura de cada celda del grid
+type StaffingSlot = {
+  groupId, groupName, schoolId, schoolName, teamId, teamName,
+  slotDate, startTime, endTime,
+  sessionId: string | null,      // null si no existe sesión para este slot
+  sessionStatus: string | null,
+  minTeachersRequired: number,   // leído de group_schedule (canónico)
+  permanentWorkers: WorkerLayerItem[],
+  teacherChanges: TeacherChange[],
+}
+```
+
+**Árbol de componentes:**
+```
+SessionsDashboard (client — gestiona semana y apertura de paneles)
+  └── WeekGrid (server — fetches StaffingSlot[], renderiza malla)
+        └── GroupDayCell (client — por celda, muestra estado visual)
+              └── click → SlotDetailPanel (Sheet)
+                    ├── MinTeachersEditor (inline) → updateSlotMinTeachers()
+                    ├── Lista permanentes → markAbsent() / unmarkAbsent()
+                    ├── Lista sustitutos → removeSubstitute()
+                    └── → SubstitutePanel (Dialog)
+                          └── WorkerSection × 5 tiers → addSubstitute()
+              └── → PermanentAssignmentDialog (Dialog) → addPermanentAssignment()
+
+AuditPanel (Sheet, client)
+  └── getAuditLog() → ChangeLogEntry[]
+        └── revertChange() [no disponible para min_teachers_update]
+```
+
+**5 tiers de disponibilidad de workers (SubstitutePanel):**
+
+| Tier | Color | Add | Comportamiento |
+|------|-------|-----|----------------|
+| P1 Surplus | verde | ✓ | Auto-ausencia en grupo origen |
+| P2 Available | neutro | ✓ | Sin impacto en otros grupos |
+| P3 Critical | rojo | ✓ ⚠ | Warning visible; sin auto-ausencia |
+| P4 Unavailable | gris | — | Conflicto de horario |
+| P5 Inactive | gris | — | Worker inactivo |
+
+**Notas técnicas:**
+- `MinTeachersEditor` — componente inline. Siempre editable (no requiere sesión). Usa `useEffect` para sincronizar state local tras `router.refresh()`.
+- `AuditPanel` — filtra entradas `absent_mark` auto-generadas (listadas en `substitute_add.new_state.auto_absence_ids`). Las muestra como sub-línea. Botón revertir disponible para `substitute_add` y `absent_mark` independientemente de si es session-scoped o slot-scoped.
+- `min_teachers_update` — entradas informativas en el audit log, sin botón revertir.
 
 ---
 

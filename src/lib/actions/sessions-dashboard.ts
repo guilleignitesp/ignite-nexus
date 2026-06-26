@@ -2,24 +2,7 @@
 
 import { createClient } from '@/lib/supabase-server'
 import { getUserProfile } from '@/lib/auth'
-
-// ─── Availability types ───────────────────────────────────────
-
-export interface WorkerLayerItem {
-  id: string
-  firstName: string
-  lastName: string
-  currentGroupName?: string
-  differentSchool?: boolean
-}
-
-export interface AvailabilityResult {
-  p1Surplus: WorkerLayerItem[]
-  p2Free: WorkerLayerItem[]
-  p3Critical: WorkerLayerItem[]
-  p4Unavailable: WorkerLayerItem[]
-  p5Inactive: WorkerLayerItem[]
-}
+import type { SlotRef, WorkerLayerItem, WorkerAvailabilityResult } from '@/lib/data/schools'
 
 export interface ChangeLogEntry {
   id: string
@@ -32,6 +15,8 @@ export interface ChangeLogEntry {
   changedAt: string
   isReverted: boolean
   isSessionChange: boolean
+  autoAbsenceIds?: string[]
+  newState?: Record<string, unknown>
 }
 
 // ─── Helpers ──────────────────────────────────────────────────
@@ -58,43 +43,29 @@ async function assertDashboardAccess(): Promise<string> {
 // ─── getWorkerAvailability ─────────────────────────────────────
 
 export async function getWorkerAvailability(
-  sessionId: string
-): Promise<AvailabilityResult> {
+  slot: SlotRef
+): Promise<WorkerAvailabilityResult> {
   await assertDashboardAccess()
   const supabase = await createClient()
 
-  // Step 1: Get session details
-  const { data: sessionRaw, error: sessionError } = await supabase
-    .from('sessions')
-    .select(
-      'id, session_date, start_time, end_time, min_teachers_required, plannings(group_id, groups(school_id, schools(team_id)))'
-    )
-    .eq('id', sessionId)
+  // Group → school + team
+  const { data: groupData, error: groupError } = await supabase
+    .from('groups')
+    .select('school_id, schools(id, team_id)')
+    .eq('id', slot.groupId)
     .single()
 
-  if (sessionError || !sessionRaw) throw new Error(sessionError?.message ?? 'Session not found')
+  if (groupError || !groupData) throw new Error(groupError?.message ?? 'Group not found')
 
-  type SessionRaw = {
-    id: string
-    session_date: string
-    start_time: string
-    end_time: string
-    min_teachers_required: number
-    plannings: {
-      group_id: string
-      groups: { school_id: string; schools: { team_id: string | null } | null } | null
-    } | null
-  }
-  const session = sessionRaw as unknown as SessionRaw
-  const ourSchoolId = session.plannings?.groups?.school_id ?? null
-  const ourGroupId = session.plannings?.group_id ?? null
-  const schoolTeamId = session.plannings?.groups?.schools?.team_id ?? null
+  type GroupRow = { school_id: string; schools: { id: string; team_id: string | null } | null }
+  const group = groupData as unknown as GroupRow
+  const ourSchoolId = group.school_id
+  const schoolTeamId = group.schools?.team_id ?? null
 
-  // Step 2: Get all workers
+  // All workers
   const { data: workersData, error: workersError } = await supabase
     .from('workers')
     .select('id, first_name, last_name, status')
-
   if (workersError) throw new Error(workersError.message)
   const allWorkers = (workersData ?? []) as {
     id: string
@@ -103,7 +74,7 @@ export async function getWorkerAvailability(
     status: string
   }[]
 
-  // Step 2.5: Team filtering — if school has a team, exclude workers assigned to other teams
+  // Team filtering
   let eligibleWorkerIds: Set<string> | null = null
   if (schoolTeamId !== null) {
     const { data: wtData } = await supabase.from('worker_teams').select('worker_id, team_id')
@@ -120,88 +91,179 @@ export async function getWorkerAvailability(
     }
   }
 
-  // Step 3: Get permanent group_assignments active on the session date
+  // Permanent assignments active on slot date, with group schedule
   const { data: assignmentsData, error: assignmentsError } = await supabase
     .from('group_assignments')
-    .select('id, group_id, worker_id, groups(school_id)')
+    .select(
+      'id, group_id, worker_id, groups(school_id, group_schedule(weekday, start_time, end_time))'
+    )
     .eq('type', 'permanent')
-    .lte('start_date', session.session_date)
-    .or(`end_date.is.null,end_date.gte.${session.session_date}`)
-
+    .lte('start_date', slot.slotDate)
+    .or(`end_date.is.null,end_date.gte.${slot.slotDate}`)
   if (assignmentsError) throw new Error(assignmentsError.message)
 
-  type AssignmentWithGroup = {
+  type AssignmentWithSchedule = {
     id: string
     group_id: string
     worker_id: string
-    groups: { school_id: string } | null
+    groups: {
+      school_id: string
+      group_schedule: { weekday: number; start_time: string; end_time: string }[]
+    } | null
   }
-  const permanentAssignments = (assignmentsData ?? []) as unknown as AssignmentWithGroup[]
+  const permanentAssignments = (assignmentsData ?? []) as unknown as AssignmentWithSchedule[]
 
-  // Build map: workerId → ALL permanent groups (a worker can be in multiple groups)
-  const workerPermanentGroups = new Map<string, { groupId: string; schoolId: string }[]>()
+  // Slot weekday in DB format (1=Mon…5=Fri): JS getDay() Mon=1…Fri=5 matches DB
+  const slotDbWeekday = new Date(`${slot.slotDate}T12:00:00`).getDay()
+
+  // Groups whose schedule overlaps with our slot (excluding our own group)
+  const overlappingGroupIds = new Set<string>()
+  const groupSchoolId = new Map<string, string>()
   for (const a of permanentAssignments) {
-    if (a.groups) {
-      const arr = workerPermanentGroups.get(a.worker_id) ?? []
-      arr.push({ groupId: a.group_id, schoolId: a.groups.school_id })
-      workerPermanentGroups.set(a.worker_id, arr)
-    }
-  }
-
-  // Step 4: Get all overlapping sessions on the same date
-  const { data: overlapData, error: overlapError } = await supabase
-    .from('sessions')
-    .select(
-      'id, start_time, end_time, min_teachers_required, plannings(group_id), session_teacher_assignments(id, worker_id, type, is_active)'
+    if (!a.groups || a.group_id === slot.groupId) continue
+    const hasOverlap = (a.groups.group_schedule ?? []).some(
+      (s) =>
+        s.weekday === slotDbWeekday &&
+        s.start_time < slot.endTime &&
+        s.end_time > slot.startTime
     )
-    .eq('session_date', session.session_date)
-    .neq('id', sessionId)
-    .lt('start_time', session.end_time)
-    .gt('end_time', session.start_time)
-
-  if (overlapError) throw new Error(overlapError.message)
-
-  type OverlapSession = {
-    id: string
-    start_time: string
-    end_time: string
-    min_teachers_required: number
-    plannings: { group_id: string } | null
-    session_teacher_assignments: {
-      id: string
-      worker_id: string
-      type: string
-      is_active: boolean
-    }[]
-  }
-  const overlapSessions = (overlapData ?? []) as unknown as OverlapSession[]
-
-  // Build worker → overlapping sessions map
-  const workerOverlapSessions = new Map<string, OverlapSession[]>()
-
-  // Also index sessions by their group
-  const sessionsByGroup = new Map<string, OverlapSession[]>()
-  for (const os of overlapSessions) {
-    const gid = os.plannings?.group_id
-    if (gid) {
-      const arr = sessionsByGroup.get(gid) ?? []
-      arr.push(os)
-      sessionsByGroup.set(gid, arr)
+    if (hasOverlap) {
+      overlappingGroupIds.add(a.group_id)
+      groupSchoolId.set(a.group_id, a.groups.school_id)
     }
   }
 
-  // For substitutes: directly in session_teacher_assignments with type='substitute'
-  for (const os of overlapSessions) {
-    for (const sta of os.session_teacher_assignments ?? []) {
-      if (sta.is_active && sta.type === 'substitute') {
-        const arr = workerOverlapSessions.get(sta.worker_id) ?? []
-        arr.push(os)
-        workerOverlapSessions.set(sta.worker_id, arr)
+  // Build: workerId → overlapping groups
+  const workerOverlapGroups = new Map<string, string[]>()
+  for (const a of permanentAssignments) {
+    if (!overlappingGroupIds.has(a.group_id)) continue
+    const arr = workerOverlapGroups.get(a.worker_id) ?? []
+    arr.push(a.group_id)
+    workerOverlapGroups.set(a.worker_id, arr)
+  }
+
+  // Build: groupId → set of permanent worker ids
+  const permWorkersPerGroup = new Map<string, Set<string>>()
+  for (const a of permanentAssignments) {
+    const set = permWorkersPerGroup.get(a.group_id) ?? new Set<string>()
+    set.add(a.worker_id)
+    permWorkersPerGroup.set(a.group_id, set)
+  }
+
+  // Sessions for overlapping groups on this date (for min_teachers_required + STAs)
+  const overlapGroupIds = [...overlappingGroupIds]
+  type SessionForAvail = {
+    id: string
+    min_teachers_required: number
+    planning_id: string
+    session_teacher_assignments: { worker_id: string; type: string; is_active: boolean }[]
+  }
+  const sessionsByGroupId = new Map<string, SessionForAvail>()
+
+  if (overlapGroupIds.length > 0) {
+    const { data: planningsData } = await supabase
+      .from('plannings')
+      .select('id, group_id')
+      .in('group_id', overlapGroupIds)
+      .eq('is_active', true)
+
+    const planningToGroup = new Map<string, string>()
+    for (const p of ((planningsData ?? []) as { id: string; group_id: string }[])) {
+      planningToGroup.set(p.id, p.group_id)
+    }
+    const planningIds = [...planningToGroup.keys()]
+
+    if (planningIds.length > 0) {
+      const { data: sessData } = await supabase
+        .from('sessions')
+        .select(
+          'id, min_teachers_required, planning_id, session_teacher_assignments(worker_id, type, is_active)'
+        )
+        .in('planning_id', planningIds)
+        .eq('session_date', slot.slotDate)
+        .lt('start_time', slot.endTime)
+        .gt('end_time', slot.startTime)
+
+      for (const s of ((sessData ?? []) as unknown as SessionForAvail[])) {
+        const gid = planningToGroup.get(s.planning_id)
+        if (gid) sessionsByGroupId.set(gid, s)
       }
     }
   }
 
-  const result: AvailabilityResult = {
+  // Load slot-scoped absent STAs for overlapping groups on this date
+  const slotAbsentByGroup = new Map<string, Set<string>>()
+  if (overlapGroupIds.length > 0) {
+    const { data: slotAbsentData } = await supabase
+      .from('session_teacher_assignments')
+      .select('worker_id, group_id')
+      .in('group_id', overlapGroupIds)
+      .eq('slot_date', slot.slotDate)
+      .eq('type', 'absent')
+      .eq('is_active', true)
+      .not('group_id', 'is', null)
+
+    for (const sta of ((slotAbsentData ?? []) as { worker_id: string; group_id: string }[])) {
+      const set = slotAbsentByGroup.get(sta.group_id) ?? new Set<string>()
+      set.add(sta.worker_id)
+      slotAbsentByGroup.set(sta.group_id, set)
+    }
+  }
+
+  // Load min_teachers_required from group_schedule for overlapping groups (canonical source)
+  const scheduleMinByGroup = new Map<string, number>()
+  if (overlapGroupIds.length > 0) {
+    const { data: scheduleMinData } = await supabase
+      .from('group_schedule')
+      .select('group_id, weekday, start_time, end_time, min_teachers_required')
+      .in('group_id', overlapGroupIds)
+
+    for (const s of ((scheduleMinData ?? []) as {
+      group_id: string; weekday: number; start_time: string; end_time: string; min_teachers_required: number
+    }[])) {
+      if (
+        s.weekday === slotDbWeekday &&
+        s.start_time < slot.endTime &&
+        s.end_time > slot.startTime
+      ) {
+        scheduleMinByGroup.set(s.group_id, s.min_teachers_required)
+      }
+    }
+  }
+
+  // Workers already occupying a substitute STA at this time (session-scoped or slot-scoped)
+  const alreadySubWorkers = new Set<string>()
+
+  const [sessSubResult, slotSubResult] = await Promise.all([
+    supabase
+      .from('sessions')
+      .select('session_teacher_assignments(worker_id, type, is_active)')
+      .eq('session_date', slot.slotDate)
+      .lt('start_time', slot.endTime)
+      .gt('end_time', slot.startTime),
+    supabase
+      .from('session_teacher_assignments')
+      .select('worker_id')
+      .eq('slot_date', slot.slotDate)
+      .eq('type', 'substitute')
+      .eq('is_active', true)
+      .not('group_id', 'is', null)
+      .lt('start_time_local', slot.endTime)
+      .gt('end_time_local', slot.startTime),
+  ])
+
+  for (const s of ((sessSubResult.data ?? []) as unknown as {
+    session_teacher_assignments: { worker_id: string; type: string; is_active: boolean }[]
+  }[])) {
+    for (const sta of s.session_teacher_assignments ?? []) {
+      if (sta.is_active && sta.type === 'substitute') alreadySubWorkers.add(sta.worker_id)
+    }
+  }
+  for (const sta of ((slotSubResult.data ?? []) as { worker_id: string }[])) {
+    alreadySubWorkers.add(sta.worker_id)
+  }
+
+  const result: WorkerAvailabilityResult = {
     p1Surplus: [],
     p2Free: [],
     p3Critical: [],
@@ -212,7 +274,6 @@ export async function getWorkerAvailability(
   for (const worker of allWorkers) {
     if (eligibleWorkerIds !== null && !eligibleWorkerIds.has(worker.id)) continue
 
-    // P5: inactive
     if (worker.status !== 'active') {
       result.p5Inactive.push({
         id: worker.id,
@@ -222,8 +283,7 @@ export async function getWorkerAvailability(
       continue
     }
 
-    // P4: has substitute STA on any overlapping session
-    if (workerOverlapSessions.has(worker.id)) {
+    if (alreadySubWorkers.has(worker.id)) {
       result.p4Unavailable.push({
         id: worker.id,
         firstName: worker.first_name,
@@ -232,68 +292,71 @@ export async function getWorkerAvailability(
       continue
     }
 
-    // Check all permanent groups for this worker
-    const permGroups = workerPermanentGroups.get(worker.id) ?? []
+    const overlapGroups = workerOverlapGroups.get(worker.id) ?? []
+    if (overlapGroups.length === 0) {
+      result.p2Free.push({ id: worker.id, firstName: worker.first_name, lastName: worker.last_name })
+      continue
+    }
+
     let isCritical = false
-    let isAbsentFromAllOverlapping = true
-    let hasAnyOverlap = false
+    let isAbsentFromAll = true
     let surplusSchoolId: string | null = null
 
-    for (const permGroup of permGroups) {
-      const permGroupSessions = sessionsByGroup.get(permGroup.groupId) ?? []
-      if (permGroupSessions.length === 0) continue
+    for (const gid of overlapGroups) {
+      const session = sessionsByGroupId.get(gid)
+      const permSet = permWorkersPerGroup.get(gid) ?? new Set<string>()
 
-      hasAnyOverlap = true
-
-      for (const os of permGroupSessions) {
-        const absentSTA = (os.session_teacher_assignments ?? []).find(
+      if (session) {
+        const absentSTA = (session.session_teacher_assignments ?? []).find(
           (sta) => sta.worker_id === worker.id && sta.type === 'absent' && sta.is_active
         )
-
-        const permanentForGroup = permanentAssignments.filter(
-          (a) => a.group_id === permGroup.groupId
-        )
-        const absentWorkerIds = new Set(
-          (os.session_teacher_assignments ?? [])
-            .filter((sta) => sta.type === 'absent' && sta.is_active)
-            .map((sta) => sta.worker_id)
-        )
-        const effectiveCount = permanentForGroup.filter(
-          (a) => !absentWorkerIds.has(a.worker_id)
-        ).length
-        const minRequired = os.min_teachers_required ?? 1
-
-        if (absentSTA) {
-          // Worker already absent — their absence is included in effectiveCount, no action needed
-        } else {
-          // Worker is present in this session
-          isAbsentFromAllOverlapping = false
+        if (!absentSTA) {
+          isAbsentFromAll = false
+          const sessionAbsentIds = new Set(
+            (session.session_teacher_assignments ?? [])
+              .filter((sta) => sta.type === 'absent' && sta.is_active)
+              .map((sta) => sta.worker_id)
+          )
+          const slotAbsentIds = slotAbsentByGroup.get(gid) ?? new Set<string>()
+          const allAbsentIds = new Set([...sessionAbsentIds, ...slotAbsentIds])
+          const effectiveCount = [...permSet].filter((id) => !allAbsentIds.has(id)).length
+          const minRequired = scheduleMinByGroup.get(gid) ?? session.min_teachers_required ?? 1
           if (effectiveCount <= minRequired) {
             isCritical = true
-          } else if (surplusSchoolId === null) {
-            surplusSchoolId = permGroup.schoolId
+          } else {
+            surplusSchoolId = groupSchoolId.get(gid) ?? null
+          }
+        }
+      } else {
+        // No session — use slot-scoped absences only
+        const slotAbsentIds = slotAbsentByGroup.get(gid) ?? new Set<string>()
+        const isAbsentHere = slotAbsentIds.has(worker.id)
+        if (!isAbsentHere) {
+          isAbsentFromAll = false
+          const effectiveCount = [...permSet].filter((id) => !slotAbsentIds.has(id)).length
+          const minRequired = scheduleMinByGroup.get(gid) ?? 1
+          if (effectiveCount <= minRequired) {
+            isCritical = true
+          } else {
+            surplusSchoolId = groupSchoolId.get(gid) ?? null
           }
         }
       }
     }
 
-    if (hasAnyOverlap) {
-      if (isCritical) {
-        result.p3Critical.push({ id: worker.id, firstName: worker.first_name, lastName: worker.last_name })
-        continue
-      }
-      if (isAbsentFromAllOverlapping) {
-        result.p2Free.push({ id: worker.id, firstName: worker.first_name, lastName: worker.last_name })
-        continue
-      }
-      // Surplus in at least one group
+    if (isCritical) {
+      result.p3Critical.push({ id: worker.id, firstName: worker.first_name, lastName: worker.last_name })
+    } else if (isAbsentFromAll) {
+      result.p2Free.push({ id: worker.id, firstName: worker.first_name, lastName: worker.last_name })
+    } else {
       const differentSchool = surplusSchoolId !== null && surplusSchoolId !== ourSchoolId
-      result.p1Surplus.push({ id: worker.id, firstName: worker.first_name, lastName: worker.last_name, differentSchool })
-      continue
+      result.p1Surplus.push({
+        id: worker.id,
+        firstName: worker.first_name,
+        lastName: worker.last_name,
+        differentSchool,
+      })
     }
-
-    // P2: free — no permanent group has an overlapping session
-    result.p2Free.push({ id: worker.id, firstName: worker.first_name, lastName: worker.last_name })
   }
 
   return result
@@ -302,32 +365,23 @@ export async function getWorkerAvailability(
 // ─── addSubstitute ────────────────────────────────────────────
 
 export async function addSubstitute(
-  sessionId: string,
+  slot: SlotRef,
   workerId: string
 ): Promise<void> {
   const changedBy = await assertDashboardAccess()
   const supabase = await createClient()
 
-  // Get session details
-  const { data: sessionRaw, error: sessionError } = await supabase
-    .from('sessions')
-    .select('id, session_date, start_time, end_time, plannings(group_id, groups(schools(team_id)))')
-    .eq('id', sessionId)
+  // Team guard — get school's team via group
+  const { data: groupData, error: groupError } = await supabase
+    .from('groups')
+    .select('schools(team_id)')
+    .eq('id', slot.groupId)
     .single()
+  if (groupError || !groupData) throw new Error(groupError?.message ?? 'Group not found')
 
-  if (sessionError || !sessionRaw) throw new Error(sessionError?.message ?? 'Session not found')
+  type GroupInfo = { schools: { team_id: string | null } | null }
+  const schoolTeamId = (groupData as unknown as GroupInfo).schools?.team_id ?? null
 
-  type SessionInfo = {
-    id: string
-    session_date: string
-    start_time: string
-    end_time: string
-    plannings: { group_id: string; groups: { schools: { team_id: string | null } | null } | null } | null
-  }
-  const sess = sessionRaw as unknown as SessionInfo
-  const schoolTeamId = sess.plannings?.groups?.schools?.team_id ?? null
-
-  // Team guard — worker must have no teams or share the school's team
   if (schoolTeamId !== null) {
     const { data: wtData } = await supabase
       .from('worker_teams')
@@ -339,22 +393,18 @@ export async function addSubstitute(
     }
   }
 
-  // Anti-double: find overlapping sessions where worker is permanent (not absent) or substitute
-  const { data: overlapData } = await supabase
+  // Anti-double: session-scoped substitute STAs
+  const { data: overlapSessions } = await supabase
     .from('sessions')
-    .select(
-      'id, session_teacher_assignments(worker_id, type, is_active)'
-    )
-    .eq('session_date', sess.session_date)
-    .lt('start_time', sess.end_time)
-    .gt('end_time', sess.start_time)
+    .select('id, session_teacher_assignments(worker_id, type, is_active)')
+    .eq('session_date', slot.slotDate)
+    .lt('start_time', slot.endTime)
+    .gt('end_time', slot.startTime)
 
-  const overlapSessions = (overlapData ?? []) as unknown as {
+  for (const os of ((overlapSessions ?? []) as unknown as {
     id: string
     session_teacher_assignments: { worker_id: string; type: string; is_active: boolean }[]
-  }[]
-
-  for (const os of overlapSessions) {
+  }[])) {
     for (const sta of os.session_teacher_assignments ?? []) {
       if (sta.worker_id === workerId && sta.is_active && sta.type === 'substitute') {
         throw new Error('CONFLICT: already assigned to session at this time')
@@ -362,58 +412,72 @@ export async function addSubstitute(
     }
   }
 
-  // Check permanent assignments active on the session date (Fix 2: date-range filter)
+  // Anti-double: slot-scoped substitute STAs
+  const { data: slotConflict } = await supabase
+    .from('session_teacher_assignments')
+    .select('id')
+    .eq('worker_id', workerId)
+    .eq('slot_date', slot.slotDate)
+    .eq('type', 'substitute')
+    .eq('is_active', true)
+    .not('group_id', 'is', null)
+    .lt('start_time_local', slot.endTime)
+    .gt('end_time_local', slot.startTime)
+
+  if ((slotConflict ?? []).length > 0) {
+    throw new Error('CONFLICT: already assigned to slot at this time')
+  }
+
+  // Permanent assignments for worker on this date (excluding current group)
   const { data: permanentConflict } = await supabase
     .from('group_assignments')
     .select('id, group_id')
     .eq('worker_id', workerId)
     .eq('type', 'permanent')
-    .lte('start_date', sess.session_date)
-    .or(`end_date.is.null,end_date.gte.${sess.session_date}`)
+    .lte('start_date', slot.slotDate)
+    .or(`end_date.is.null,end_date.gte.${slot.slotDate}`)
 
-  const permGroupIds = (permanentConflict ?? []).map(
-    (a: { id: string; group_id: string }) => a.group_id
-  )
+  const permGroupIds = ((permanentConflict ?? []) as { id: string; group_id: string }[])
+    .map((a) => a.group_id)
+    .filter((gid) => gid !== slot.groupId)
 
-  // Sessions to auto-absent the worker from (Fix 3: surplus → auto-absent)
-  const surplusSessionIds: string[] = []
+  const autoAbsenceIds: string[] = []
 
   if (permGroupIds.length > 0) {
     const { data: permSessions } = await supabase
       .from('sessions')
       .select(
-        'id, min_teachers_required, plannings(group_id), session_teacher_assignments(worker_id, type, is_active)'
+        'id, start_time, end_time, min_teachers_required, plannings(group_id), session_teacher_assignments(worker_id, type, is_active)'
       )
-      .eq('session_date', sess.session_date)
-      .lt('start_time', sess.end_time)
-      .gt('end_time', sess.start_time)
-      .neq('id', sessionId)
+      .eq('session_date', slot.slotDate)
+      .lt('start_time', slot.endTime)
+      .gt('end_time', slot.startTime)
 
     type PermSession = {
       id: string
+      start_time: string
+      end_time: string
       min_teachers_required: number
       plannings: { group_id: string } | null
       session_teacher_assignments: { worker_id: string; type: string; is_active: boolean }[]
     }
-    const permSessionsList = (permSessions ?? []) as unknown as PermSession[]
 
-    for (const ps of permSessionsList) {
+    for (const ps of ((permSessions ?? []) as unknown as PermSession[])) {
       const gid = ps.plannings?.group_id
       if (!gid || !permGroupIds.includes(gid)) continue
 
       const isAbsent = (ps.session_teacher_assignments ?? []).some(
         (sta) => sta.worker_id === workerId && sta.type === 'absent' && sta.is_active
       )
-      if (isAbsent) continue  // already absent — no conflict
+      if (isAbsent) continue
 
-      // Worker is present — check if their group is surplus or critical
       const { data: permForGroup } = await supabase
         .from('group_assignments')
         .select('worker_id')
         .eq('group_id', gid)
         .eq('type', 'permanent')
-        .lte('start_date', sess.session_date)
-        .or(`end_date.is.null,end_date.gte.${sess.session_date}`)
+        .lte('start_date', slot.slotDate)
+        .or(`end_date.is.null,end_date.gte.${slot.slotDate}`)
 
       const allPermIds = ((permForGroup ?? []) as { worker_id: string }[]).map((a) => a.worker_id)
       const absentIds = new Set(
@@ -422,26 +486,60 @@ export async function addSubstitute(
           .map((sta) => sta.worker_id)
       )
       const effectiveCount = allPermIds.filter((id) => !absentIds.has(id)).length
-      const minRequired = ps.min_teachers_required ?? 1
-
-      if (effectiveCount <= minRequired) {
-        throw new Error('CONFLICT: already assigned to session at this time')
+      if (effectiveCount <= (ps.min_teachers_required ?? 1)) {
+        // Critical — allow but do NOT auto-absent (teacher stays assigned to critical group)
+        continue
       }
 
-      // Surplus — schedule auto-absent
-      surplusSessionIds.push(ps.id)
+      // Surplus — auto-absent from this session
+      const surplusGroupId = ps.plannings?.group_id ?? null
+
+      const { data: absentSTA, error: absentError } = await supabase
+        .from('session_teacher_assignments')
+        .insert({
+          session_id: ps.id,
+          group_id: surplusGroupId,
+          slot_date: slot.slotDate,
+          start_time_local: ps.start_time,
+          end_time_local: ps.end_time,
+          worker_id: workerId,
+          type: 'absent',
+          valid_from: slot.slotDate,
+          valid_until: slot.slotDate,
+          is_active: true,
+        })
+        .select('id')
+        .single()
+
+      if (absentError) throw new Error(absentError.message)
+
+      const absenceId = (absentSTA as { id: string }).id
+      autoAbsenceIds.push(absenceId)
+
+      await supabase.from('dashboard_change_log').insert({
+        session_id: ps.id,
+        worker_id: workerId,
+        changed_by: changedBy,
+        change_type: 'absent_mark',
+        previous_state: null,
+        new_state: { assignment_id: absenceId },
+      })
     }
   }
 
-  // Insert substitute STA
+  // Insert slot-based substitute STA
   const { data: insertedSTA, error: insertError } = await supabase
     .from('session_teacher_assignments')
     .insert({
-      session_id: sessionId,
+      session_id: null,
+      group_id: slot.groupId,
+      slot_date: slot.slotDate,
+      start_time_local: slot.startTime,
+      end_time_local: slot.endTime,
       worker_id: workerId,
       type: 'substitute',
-      valid_from: sess.session_date,
-      valid_until: sess.session_date,
+      valid_from: slot.slotDate,
+      valid_until: slot.slotDate,
       is_active: true,
     })
     .select('id')
@@ -449,40 +547,9 @@ export async function addSubstitute(
 
   if (insertError) throw new Error(insertError.message)
 
-  // Auto-absent worker from surplus sessions and collect their ids
-  const autoAbsenceIds: string[] = []
-  for (const surplusSessionId of surplusSessionIds) {
-    const { data: absentSTA, error: absentError } = await supabase
-      .from('session_teacher_assignments')
-      .insert({
-        session_id: surplusSessionId,
-        worker_id: workerId,
-        type: 'absent',
-        valid_from: sess.session_date,
-        valid_until: sess.session_date,
-        is_active: true,
-      })
-      .select('id')
-      .single()
-
-    if (absentError) throw new Error(absentError.message)
-
-    const absenceId = (absentSTA as { id: string }).id
-    autoAbsenceIds.push(absenceId)
-
-    await supabase.from('dashboard_change_log').insert({
-      session_id: surplusSessionId,
-      worker_id: workerId,
-      changed_by: changedBy,
-      change_type: 'absent_mark',
-      previous_state: null,
-      new_state: { assignment_id: absenceId },
-    })
-  }
-
-  // Log substitute — include auto_absence_ids so removeSubstitute can undo them
   const { error: logError } = await supabase.from('dashboard_change_log').insert({
-    session_id: sessionId,
+    session_id: null,
+    group_id: slot.groupId,
     worker_id: workerId,
     changed_by: changedBy,
     change_type: 'substitute_add',
@@ -504,18 +571,21 @@ export async function removeSubstitute(
   const changedBy = await assertDashboardAccess()
   const supabase = await createClient()
 
-  // Get the assignment
   const { data: sta, error: fetchError } = await supabase
     .from('session_teacher_assignments')
-    .select('id, session_id, worker_id')
+    .select('id, session_id, group_id, worker_id')
     .eq('id', substituteAssignmentId)
     .single()
 
   if (fetchError || !sta) throw new Error(fetchError?.message ?? 'Assignment not found')
 
-  const { session_id, worker_id } = sta as { id: string; session_id: string; worker_id: string }
+  const { session_id, group_id, worker_id } = sta as {
+    id: string
+    session_id: string | null
+    group_id: string | null
+    worker_id: string
+  }
 
-  // Deactivate substitute STA
   const { error: updateError } = await supabase
     .from('session_teacher_assignments')
     .update({ is_active: false })
@@ -523,44 +593,58 @@ export async function removeSubstitute(
 
   if (updateError) throw new Error(updateError.message)
 
-  // Look up the original add-log to find auto-created absence STAs
-  const { data: logEntry } = await supabase
-    .from('dashboard_change_log')
-    .select('new_state')
-    .eq('change_type', 'substitute_add')
-    .eq('worker_id', worker_id)
-    .eq('session_id', session_id)
-    .eq('is_reverted', false)
-    .order('changed_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  // Find original add-log (session-scoped or slot-scoped)
+  let logEntry = null
+  if (session_id) {
+    const { data } = await supabase
+      .from('dashboard_change_log')
+      .select('new_state')
+      .eq('change_type', 'substitute_add')
+      .eq('worker_id', worker_id)
+      .eq('session_id', session_id)
+      .eq('is_reverted', false)
+      .order('changed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    logEntry = data
+  } else if (group_id) {
+    const { data } = await supabase
+      .from('dashboard_change_log')
+      .select('new_state')
+      .eq('change_type', 'substitute_add')
+      .eq('worker_id', worker_id)
+      .eq('group_id', group_id)
+      .eq('is_reverted', false)
+      .order('changed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    logEntry = data
+  }
 
   type SubstituteLogState = { assignment_id: string; auto_absence_ids?: string[] }
   const logState = (logEntry as { new_state: SubstituteLogState } | null)?.new_state
-
   const autoAbsenceIds: string[] =
-    logState?.assignment_id === substituteAssignmentId
-      ? (logState.auto_absence_ids ?? [])
-      : []
+    logState?.assignment_id === substituteAssignmentId ? (logState.auto_absence_ids ?? []) : []
 
-  // Undo auto-absences created when this substitute was added
   for (const absenceId of autoAbsenceIds) {
     const { error: absenceUpdateError } = await supabase
       .from('session_teacher_assignments')
       .update({ is_active: false })
       .eq('id', absenceId)
-
     if (absenceUpdateError) throw new Error(absenceUpdateError.message)
 
-    // Find the session_id for this absence STA so we can log it properly
     const { data: absenceSTA } = await supabase
       .from('session_teacher_assignments')
-      .select('session_id')
+      .select('session_id, group_id')
       .eq('id', absenceId)
       .single()
 
+    type AbsenceRow = { session_id: string | null; group_id: string | null }
+    const abs = (absenceSTA as unknown as AbsenceRow | null)
+
     await supabase.from('dashboard_change_log').insert({
-      session_id: (absenceSTA as { session_id: string } | null)?.session_id ?? null,
+      session_id: abs?.session_id ?? null,
+      group_id: abs?.group_id ?? null,
       worker_id,
       changed_by: changedBy,
       change_type: 'absent_unmark',
@@ -569,9 +653,9 @@ export async function removeSubstitute(
     })
   }
 
-  // Log substitute removal
   const { error: logError } = await supabase.from('dashboard_change_log').insert({
     session_id,
+    group_id,
     worker_id,
     changed_by: changedBy,
     change_type: 'substitute_remove',
@@ -585,31 +669,24 @@ export async function removeSubstitute(
 // ─── markAbsent ──────────────────────────────────────────────
 
 export async function markAbsent(
-  sessionId: string,
+  slot: SlotRef,
   workerId: string
 ): Promise<void> {
   const changedBy = await assertDashboardAccess()
   const supabase = await createClient()
 
-  // Get session date
-  const { data: sessRaw, error: sessError } = await supabase
-    .from('sessions')
-    .select('id, session_date')
-    .eq('id', sessionId)
-    .single()
-
-  if (sessError || !sessRaw) throw new Error(sessError?.message ?? 'Session not found')
-  const { session_date } = sessRaw as { id: string; session_date: string }
-
-  // Insert absence STA
   const { data: insertedSTA, error: insertError } = await supabase
     .from('session_teacher_assignments')
     .insert({
-      session_id: sessionId,
+      session_id: null,
+      group_id: slot.groupId,
+      slot_date: slot.slotDate,
+      start_time_local: slot.startTime,
+      end_time_local: slot.endTime,
       worker_id: workerId,
       type: 'absent',
-      valid_from: session_date,
-      valid_until: session_date,
+      valid_from: slot.slotDate,
+      valid_until: slot.slotDate,
       is_active: true,
     })
     .select('id')
@@ -617,9 +694,9 @@ export async function markAbsent(
 
   if (insertError) throw new Error(insertError.message)
 
-  // Log
   const { error: logError } = await supabase.from('dashboard_change_log').insert({
-    session_id: sessionId,
+    session_id: null,
+    group_id: slot.groupId,
     worker_id: workerId,
     changed_by: changedBy,
     change_type: 'absent_mark',
@@ -638,17 +715,20 @@ export async function unmarkAbsent(
   const changedBy = await assertDashboardAccess()
   const supabase = await createClient()
 
-  // Get the STA
   const { data: sta, error: fetchError } = await supabase
     .from('session_teacher_assignments')
-    .select('id, session_id, worker_id')
+    .select('id, session_id, group_id, worker_id')
     .eq('id', absenceAssignmentId)
     .single()
 
   if (fetchError || !sta) throw new Error(fetchError?.message ?? 'Assignment not found')
-  const { session_id, worker_id } = sta as { id: string; session_id: string; worker_id: string }
+  const { session_id, group_id, worker_id } = sta as {
+    id: string
+    session_id: string | null
+    group_id: string | null
+    worker_id: string
+  }
 
-  // Deactivate
   const { error: updateError } = await supabase
     .from('session_teacher_assignments')
     .update({ is_active: false })
@@ -656,9 +736,9 @@ export async function unmarkAbsent(
 
   if (updateError) throw new Error(updateError.message)
 
-  // Log
   const { error: logError } = await supabase.from('dashboard_change_log').insert({
     session_id,
+    group_id,
     worker_id,
     changed_by: changedBy,
     change_type: 'absent_unmark',
@@ -986,59 +1066,68 @@ export async function addPermanentAssignment(
     }
   }
 
-  // Get plannings for this group
-  const { data: planningRows } = await supabase
-    .from('plannings')
-    .select('id')
-    .eq('group_id', groupId)
-    .eq('is_active', true)
+  // Schedule-based conflict detection
+  const [targetScheduleResult, workerAssignmentsResult] = await Promise.all([
+    supabase
+      .from('group_schedule')
+      .select('weekday, start_time, end_time')
+      .eq('group_id', groupId),
+    supabase
+      .from('group_assignments')
+      .select('id, group_id')
+      .eq('worker_id', workerId)
+      .neq('group_id', groupId)
+      .eq('type', 'permanent')
+      .eq('is_active', true),
+  ])
 
-  const planningIds = ((planningRows ?? []) as { id: string }[]).map((p) => p.id)
+  const targetSlots = ((targetScheduleResult.data ?? []) as {
+    weekday: number
+    start_time: string
+    end_time: string
+  }[])
 
-  let conflictSTAIds: string[] = []
+  const otherGroupIds = ((workerAssignmentsResult.data ?? []) as {
+    id: string
+    group_id: string
+  }[]).map((a) => a.group_id)
+
   let manualConflicts = 0
 
-  if (planningIds.length > 0) {
-    const { data: groupSessions } = await supabase
-      .from('sessions')
-      .select(
-        'id, planning_id, session_teacher_assignments(id, worker_id, type, is_active)'
-      )
-      .in('planning_id', planningIds)
-      .gte('session_date', effectiveDate)
-      .eq('is_consolidated', false)
+  if (otherGroupIds.length > 0 && targetSlots.length > 0) {
+    const { data: otherSchedules } = await supabase
+      .from('group_schedule')
+      .select('group_id, weekday, start_time, end_time')
+      .in('group_id', otherGroupIds)
 
-    type GroupSession = {
-      id: string
-      planning_id: string
-      session_teacher_assignments: { id: string; worker_id: string; type: string; is_active: boolean }[]
+    const otherSlotsMap = new Map<string, { weekday: number; start_time: string; end_time: string }[]>()
+    for (const s of ((otherSchedules ?? []) as {
+      group_id: string
+      weekday: number
+      start_time: string
+      end_time: string
+    }[])) {
+      const arr = otherSlotsMap.get(s.group_id) ?? []
+      arr.push(s)
+      otherSlotsMap.set(s.group_id, arr)
     }
 
-    const groupSessionsList = (groupSessions ?? []) as unknown as GroupSession[]
-
-    for (const gs of groupSessionsList) {
-      const workerSTAs = (gs.session_teacher_assignments ?? []).filter(
-        (sta) => sta.worker_id === workerId && sta.is_active
+    for (const gid of otherGroupIds) {
+      const otherSlots = otherSlotsMap.get(gid) ?? []
+      const hasConflict = targetSlots.some((t) =>
+        otherSlots.some(
+          (o) =>
+            o.weekday === t.weekday &&
+            o.start_time < t.end_time &&
+            o.end_time > t.start_time
+        )
       )
-      if (workerSTAs.length > 0) {
-        manualConflicts++
-        conflictSTAIds.push(...workerSTAs.map((s) => s.id))
-      }
+      if (hasConflict) manualConflicts++
     }
   }
 
   if (manualConflicts > 0 && !force) {
     return { manualConflicts }
-  }
-
-  // If force: deactivate conflicting STAs
-  if (force && conflictSTAIds.length > 0) {
-    const { error: deactivateError } = await supabase
-      .from('session_teacher_assignments')
-      .update({ is_active: false })
-      .in('id', conflictSTAIds)
-
-    if (deactivateError) throw new Error(deactivateError.message)
   }
 
   // Insert group assignment
@@ -1324,6 +1413,11 @@ export async function getAuditLog(): Promise<ChangeLogEntry[]> {
       changedAt: entry.changed_at,
       isReverted: entry.is_reverted,
       isSessionChange: entry.sessions !== null,
+      autoAbsenceIds:
+        entry.change_type === 'substitute_add'
+          ? ((entry.new_state as { auto_absence_ids?: string[] } | null)?.auto_absence_ids ?? [])
+          : [],
+      newState: (entry.new_state as Record<string, unknown> | null) ?? undefined,
     }
   })
 }
@@ -1423,7 +1517,7 @@ export async function revertChange(changeId: string): Promise<void> {
   const { data: changeRaw, error: fetchError } = await supabase
     .from('dashboard_change_log')
     .select(
-      'id, session_id, worker_id, change_type, previous_state, new_state, is_reverted, changed_at'
+      'id, session_id, group_id, worker_id, change_type, previous_state, new_state, is_reverted, changed_at'
     )
     .eq('id', changeId)
     .single()
@@ -1433,6 +1527,7 @@ export async function revertChange(changeId: string): Promise<void> {
   type ChangeRecord = {
     id: string
     session_id: string | null
+    group_id: string | null
     worker_id: string | null
     change_type: string
     previous_state: { assignment_id: string } | null
@@ -1445,12 +1540,27 @@ export async function revertChange(changeId: string): Promise<void> {
   if (change.is_reverted) throw new Error('ALREADY_REVERTED')
 
   // Count subsequent non-reverted changes
-  let countQuery = supabase
-    .from('dashboard_change_log')
-    .select('id', { count: 'exact', head: true })
-    .eq('session_id', change.session_id)
-    .gt('changed_at', change.changed_at)
-    .eq('is_reverted', false)
+  let countQuery
+  if (change.session_id) {
+    countQuery = supabase
+      .from('dashboard_change_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('session_id', change.session_id)
+      .gt('changed_at', change.changed_at)
+      .eq('is_reverted', false)
+  } else if (change.group_id) {
+    countQuery = supabase
+      .from('dashboard_change_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('group_id', change.group_id)
+      .gt('changed_at', change.changed_at)
+      .eq('is_reverted', false)
+  } else {
+    countQuery = supabase
+      .from('dashboard_change_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('id', 'no-match')
+  }
 
   if (change.worker_id) {
     countQuery = countQuery.eq('worker_id', change.worker_id)
@@ -1462,7 +1572,22 @@ export async function revertChange(changeId: string): Promise<void> {
   if ((count ?? 0) > 0) throw new Error(`BLOCKED:${count}`)
 
   // Apply revert
-  if (change.change_type === 'substitute_add' || change.change_type === 'absent_mark') {
+  if (change.change_type === 'substitute_add') {
+    if (!change.new_state?.assignment_id) throw new Error('Invalid log entry: missing new_state')
+    const { error } = await supabase
+      .from('session_teacher_assignments')
+      .update({ is_active: false })
+      .eq('id', change.new_state.assignment_id)
+    if (error) throw new Error(error.message)
+    const autoIds: string[] = change.new_state.auto_absence_ids ?? []
+    if (autoIds.length > 0) {
+      const { error: absError } = await supabase
+        .from('session_teacher_assignments')
+        .update({ is_active: false })
+        .in('id', autoIds)
+      if (absError) throw new Error(absError.message)
+    }
+  } else if (change.change_type === 'absent_mark') {
     if (!change.new_state?.assignment_id) throw new Error('Invalid log entry: missing new_state')
     const { error } = await supabase
       .from('session_teacher_assignments')
@@ -1489,4 +1614,79 @@ export async function revertChange(changeId: string): Promise<void> {
     .eq('id', changeId)
 
   if (markError) throw new Error(markError.message)
+}
+
+// ─── updateSlotMinTeachers ────────────────────────────────────
+
+export async function updateSlotMinTeachers(
+  slot: SlotRef,
+  minTeachersRequired: number
+): Promise<void> {
+  const changedBy = await assertDashboardAccess()
+  if (minTeachersRequired < 1) throw new Error('Min must be >= 1')
+  const supabase = await createClient()
+
+  const slotStart = slot.startTime.slice(0, 5)
+  const slotEnd = slot.endTime.slice(0, 5)
+  const slotWeekday = new Date(`${slot.slotDate}T12:00:00`).getDay()
+
+  // Always update group_schedule
+  const { data: scheduleRows } = await supabase
+    .from('group_schedule')
+    .select('id, weekday, start_time, end_time, min_teachers_required')
+    .eq('group_id', slot.groupId)
+
+  const scheduleRow = ((scheduleRows ?? []) as {
+    id: string; weekday: number; start_time: string; end_time: string; min_teachers_required: number
+  }[]).find(
+    (s) => s.weekday === slotWeekday &&
+      s.start_time.slice(0, 5) === slotStart &&
+      s.end_time.slice(0, 5) === slotEnd
+  )
+
+  if (scheduleRow) {
+    const { error } = await supabase
+      .from('group_schedule')
+      .update({ min_teachers_required: minTeachersRequired })
+      .eq('id', scheduleRow.id)
+    if (error) throw new Error(error.message)
+
+    await supabase.from('dashboard_change_log').insert({
+      session_id: null,
+      group_id: slot.groupId,
+      worker_id: null,
+      changed_by: changedBy,
+      change_type: 'min_teachers_update',
+      previous_state: { schedule_id: scheduleRow.id, min_teachers_required: scheduleRow.min_teachers_required },
+      new_state: { schedule_id: scheduleRow.id, min_teachers_required: minTeachersRequired },
+    })
+  }
+
+  // Also update the session if one exists for this specific date
+  const { data: planningData } = await supabase
+    .from('plannings')
+    .select('id')
+    .eq('group_id', slot.groupId)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (planningData) {
+    const { data: sessionsData } = await supabase
+      .from('sessions')
+      .select('id, start_time, end_time')
+      .eq('planning_id', (planningData as { id: string }).id)
+      .eq('session_date', slot.slotDate)
+
+    const session = ((sessionsData ?? []) as { id: string; start_time: string; end_time: string }[])
+      .find(
+        (s) => s.start_time.slice(0, 5) === slotStart && s.end_time.slice(0, 5) === slotEnd
+      )
+
+    if (session) {
+      await supabase
+        .from('sessions')
+        .update({ min_teachers_required: minTeachersRequired })
+        .eq('id', session.id)
+    }
+  }
 }

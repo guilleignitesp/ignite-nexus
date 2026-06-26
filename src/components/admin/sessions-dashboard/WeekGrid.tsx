@@ -2,28 +2,16 @@
 
 import React from 'react'
 import { useTranslations } from 'next-intl'
-import type {
-  DashboardSchool,
-  WeekSession,
-  ActiveAssignment,
-} from '@/lib/data/sessions-dashboard'
+import type { StaffingSlot } from '@/lib/data/schools'
 import { addDays } from '@/lib/utils/week-helpers'
 import { GroupDayCell } from './GroupDayCell'
 
 interface Props {
-  schools: DashboardSchool[]
-  sessions: WeekSession[]
-  assignments: ActiveAssignment[]
+  slots: StaffingSlot[]
   workerNames: Map<string, string>
   weekStart: string
   today: string
-  onSessionClick: (session: WeekSession, groupName: string, schoolName: string) => void
-}
-
-function getDayOfWeek(dateStr: string): number {
-  const d = new Date(`${dateStr}T12:00:00`)
-  const day = d.getDay()
-  return day === 0 ? 7 : day
+  onSlotClick: (slot: StaffingSlot) => void
 }
 
 const DAY_LABELS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie']
@@ -33,15 +21,7 @@ function formatDay(dateStr: string, idx: number): string {
   return `${DAY_LABELS[idx]} ${d.getDate()}`
 }
 
-export function WeekGrid({
-  schools,
-  sessions,
-  assignments,
-  workerNames,
-  weekStart,
-  today,
-  onSessionClick,
-}: Props) {
+export function WeekGrid({ slots, workerNames, weekStart, today, onSlotClick }: Props) {
   const t = useTranslations('sessionsDashboard')
 
   const days: string[] = [
@@ -51,6 +31,24 @@ export function WeekGrid({
     addDays(weekStart, 3),
     addDays(weekStart, 4),
   ]
+
+  // Derive school → group structure from slots (preserving school sort from server)
+  const schoolMap = new Map<string, { id: string; name: string; groups: Map<string, string> }>()
+  for (const slot of slots) {
+    let school = schoolMap.get(slot.schoolId)
+    if (!school) {
+      school = { id: slot.schoolId, name: slot.schoolName, groups: new Map() }
+      schoolMap.set(slot.schoolId, school)
+    }
+    if (!school.groups.has(slot.groupId)) {
+      school.groups.set(slot.groupId, slot.groupName)
+    }
+  }
+  const schools = [...schoolMap.values()].map((s) => ({
+    id: s.id,
+    name: s.name,
+    groups: [...s.groups.entries()].map(([id, name]) => ({ id, name })),
+  }))
 
   return (
     <div
@@ -114,7 +112,6 @@ export function WeekGrid({
           {schools.map((school) => (
             <React.Fragment key={school.id}>
               <tr style={{ borderTop: '2px solid var(--border)' }}>
-                {/* Sticky school + group team links */}
                 <td
                   style={{
                     position: 'sticky',
@@ -134,62 +131,35 @@ export function WeekGrid({
                 >
                   <div>{school.name}</div>
                 </td>
-
-                {/* One day cell per column, aggregating all groups for this school */}
-                {days.map((day, idx) => {
-                  const dayWeekday = getDayOfWeek(day)
-
-                  return (
-                    <td
-                      key={day}
-                      style={{
-                        padding: '0.375rem 0.5rem',
-                        borderRight: idx < 4 ? '1px solid var(--border)' : undefined,
-                        borderBottom: '1px solid var(--border)',
-                        verticalAlign: 'top',
-                        minWidth: '200px',
-                      }}
-                    >
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                        {school.groups.map((group) => {
-                          const groupSessions = sessions.filter(
-                            (s) => s.groupId === group.id && s.date === day
-                          )
-                          const daySchedule = group.schedule.find(
-                            (s) => s.weekday === dayWeekday
-                          )
-                          const groupAssignments = assignments.filter(
-                            (a) => a.groupId === group.id
-                          )
-
-                          if (groupSessions.length === 0 && !daySchedule) return null
-
-                          return (
-                            <GroupDayCell
-                              key={group.id}
-                              sessions={groupSessions}
-                              schedule={
-                                daySchedule
-                                  ? {
-                                      startTime: daySchedule.startTime,
-                                      endTime: daySchedule.endTime,
-                                    }
-                                  : undefined
-                              }
-                              assignments={groupAssignments}
-                              workerNames={workerNames}
-                              groupName={group.name}
-                              sessionDate={day}
-                              onSessionClick={(session) =>
-                                onSessionClick(session, group.name, school.name)
-                              }
-                            />
-                          )
-                        })}
-                      </div>
-                    </td>
-                  )
-                })}
+                {days.map((day, idx) => (
+                  <td
+                    key={day}
+                    style={{
+                      padding: '0.375rem 0.5rem',
+                      borderRight: idx < 4 ? '1px solid var(--border)' : undefined,
+                      borderBottom: '1px solid var(--border)',
+                      verticalAlign: 'top',
+                      minWidth: '200px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                      {school.groups.map((group) => {
+                        const groupSlots = slots.filter(
+                          (s) => s.groupId === group.id && s.slotDate === day
+                        )
+                        if (groupSlots.length === 0) return null
+                        return (
+                          <GroupDayCell
+                            key={group.id}
+                            slots={groupSlots}
+                            workerNames={workerNames}
+                            onSlotClick={onSlotClick}
+                          />
+                        )
+                      })}
+                    </div>
+                  </td>
+                ))}
               </tr>
             </React.Fragment>
           ))}

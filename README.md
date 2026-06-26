@@ -46,10 +46,11 @@ npm run lint    # ESLint
 
 ## Key Docs
 
-- [Architecture](docs/architecture.md) — auth model, routing, data patterns
-- [Database](docs/database.md) — all tables, columns, relationships
+- [Architecture](docs/arquitectura.md) — stack, routing, code patterns, auth model, all modules
+- [Database](docs/base-de-datos.md) — all tables, columns, relationships, RLS policies, migrations
 - [Actions](docs/actions.md) — all server actions, auth requirements
-- [Status System](docs/status-system.md) — session statuses, excused reasons, XP rules
+- [Status System](docs/status-system.md) — session statuses, staffing tiers, XP rules
+- [UI Components](docs/ui-components.md) — component tree by area, props, design patterns
 
 ## Project Structure
 

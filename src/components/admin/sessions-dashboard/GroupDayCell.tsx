@@ -2,21 +2,16 @@
 
 import { useTranslations } from 'next-intl'
 import { Badge } from '@/components/ui/badge'
-import type { WeekSession, ActiveAssignment } from '@/lib/data/sessions-dashboard'
+import type { StaffingSlot } from '@/lib/data/schools'
 
 interface Props {
-  sessions: WeekSession[]
-  schedule: { startTime: string; endTime: string } | undefined
-  assignments: ActiveAssignment[]
+  slots: StaffingSlot[]
   workerNames: Map<string, string>
-  groupName: string
-  sessionDate: string
-  onSessionClick: (session: WeekSession) => void
+  onSlotClick: (slot: StaffingSlot) => void
 }
 
-
 function statusVariant(
-  status: WeekSession['status']
+  status: StaffingSlot['sessionStatus']
 ): 'default' | 'secondary' | 'destructive' | 'outline' {
   switch (status) {
     case 'completed': return 'default'
@@ -25,47 +20,25 @@ function statusVariant(
   }
 }
 
-export function GroupDayCell({
-  sessions,
-  schedule,
-  assignments,
-  workerNames,
-  groupName,
-  sessionDate,
-  onSessionClick,
-}: Props) {
+export function GroupDayCell({ slots, workerNames, onSlotClick }: Props) {
   const t = useTranslations('sessionsDashboard')
-
-  const dateAssignments = assignments.filter(
-    (a) => a.startDate <= sessionDate && (a.endDate === null || a.endDate >= sessionDate)
-  )
-
-  if (sessions.length === 0) {
-    if (!schedule) return null
-    return (
-      <div style={{ fontSize: '0.7rem', color: 'var(--muted-foreground)', padding: '0.25rem' }}>
-        <span style={{ fontWeight: 500, marginRight: '0.25rem' }}>{groupName}</span>
-        {schedule.startTime.slice(0, 5)}–{schedule.endTime.slice(0, 5)}
-      </div>
-    )
-  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-      {sessions.map((session) => {
+      {slots.map((slot) => {
         const absentIds = new Set(
-          session.teacherChanges
+          slot.teacherChanges
             .filter((tc) => tc.type === 'absent' && tc.isActive)
             .map((tc) => tc.workerId)
         )
-        const substitutes = session.teacherChanges.filter(
+        const substitutes = slot.teacherChanges.filter(
           (tc) => tc.type === 'substitute' && tc.isActive
         )
 
         return (
           <button
-            key={session.id}
-            onClick={() => onSessionClick(session)}
+            key={`${slot.groupId}|${slot.slotDate}|${slot.startTime}`}
+            onClick={() => onSlotClick(slot)}
             style={{
               display: 'block',
               width: '100%',
@@ -79,40 +52,47 @@ export function GroupDayCell({
           >
             {/* Group + time row */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{groupName}</span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{slot.groupName}</span>
               <span style={{ fontSize: '0.7rem', color: 'var(--muted-foreground)' }}>
-                {session.startTime.slice(0, 5)}–{session.endTime.slice(0, 5)}
+                {slot.startTime.slice(0, 5)}–{slot.endTime.slice(0, 5)}
               </span>
-              <Badge variant={statusVariant(session.status)} style={{ fontSize: '0.6rem', padding: '0 0.25rem' }}>
-                {t(`status.${session.status}`)}
-              </Badge>
-              {session.status === 'excused' && session.excusedReason && (
+              {slot.sessionStatus && (
+                <Badge
+                  variant={statusVariant(slot.sessionStatus)}
+                  style={{ fontSize: '0.6rem', padding: '0 0.25rem' }}
+                >
+                  {t(`status.${slot.sessionStatus}`)}
+                </Badge>
+              )}
+              {slot.sessionStatus === 'excused' && slot.excusedReason && (
                 <span style={{ fontSize: '0.6rem', color: 'var(--muted-foreground)' }}>
-                  {t(`excusedReasons.${session.excusedReason}` as Parameters<typeof t>[0])}
+                  {t(`excusedReasons.${slot.excusedReason}` as Parameters<typeof t>[0])}
                 </span>
               )}
             </div>
 
             {/* Project */}
-            <div style={{ fontSize: '0.7rem', color: 'var(--muted-foreground)', marginTop: '0.125rem' }}>
-              {session.projectName ?? t('noProject')}
-            </div>
+            {slot.projectName && (
+              <div style={{ fontSize: '0.7rem', color: 'var(--muted-foreground)', marginTop: '0.125rem' }}>
+                {slot.projectName}
+              </div>
+            )}
 
             {/* Permanent teachers */}
-            {dateAssignments.length > 0 && (
+            {slot.permanentWorkers.length > 0 && (
               <div style={{ marginTop: '0.25rem', display: 'flex', flexDirection: 'column', gap: '0.125rem' }}>
-                {dateAssignments.map((a) => {
-                  const isAbsent = absentIds.has(a.workerId)
+                {slot.permanentWorkers.map((w) => {
+                  const isAbsent = absentIds.has(w.workerId)
                   return (
                     <span
-                      key={a.id}
+                      key={w.assignmentId}
                       style={{
                         fontSize: '0.7rem',
                         color: isAbsent ? 'var(--destructive)' : 'var(--foreground)',
                         textDecoration: isAbsent ? 'line-through' : 'none',
                       }}
                     >
-                      {a.workerFirstName} {a.workerLastName}
+                      {w.firstName} {w.lastName}
                       {isAbsent && ' ✗'}
                     </span>
                   )
@@ -124,7 +104,10 @@ export function GroupDayCell({
             {substitutes.length > 0 && (
               <div style={{ marginTop: '0.125rem', display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
                 {substitutes.map((sub) => (
-                  <span key={sub.id} style={{ fontSize: '0.7rem', color: 'var(--primary)', fontStyle: 'italic' }}>
+                  <span
+                    key={sub.id}
+                    style={{ fontSize: '0.7rem', color: 'var(--primary)', fontStyle: 'italic' }}
+                  >
                     ↪ {workerNames.get(sub.workerId) ?? `#${sub.workerId.slice(0, 6)}`}
                   </span>
                 ))}

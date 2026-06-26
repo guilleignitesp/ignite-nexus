@@ -1,0 +1,257 @@
+# UI Components — IGNITE NEXUS
+
+Component tree by area. All client components use `useTransition` + `router.refresh()` for mutations. All admin components are forbidden from importing `src/components/teacher/` or `src/components/student/`.
+
+---
+
+## Shared / Base UI (`src/components/ui/`)
+
+shadcn/ui preset **base-nova** using `@base-ui/react` as the primitive layer. **Critical**: use `render={<Component />}` instead of `asChild` — `@base-ui/react` does not support `asChild`.
+
+| Component | Variants | Notes |
+|-----------|---------|-------|
+| `Button` | `default`, `outline`, `ghost`, `destructive`, `secondary` | Size prop: `sm`, `xs`. Link usage: `<Button render={<Link href="..." />}>` |
+| `Badge` | `default`, `secondary`, `destructive`, `outline` | — |
+| `Input` | — | Controlled |
+| `Label` | — | — |
+| `Dialog` | — | `@base-ui/react/dialog`. `DialogClose render={<Button />}` pattern |
+| `Sheet` | sides: `right`, `left`, `top`, `bottom` | Slide-over panel |
+| `Sidebar` | — | Collapsible admin sidebar with `SidebarProvider` |
+| `Skeleton` | — | Loading placeholder |
+
+---
+
+## Auth (`src/components/auth/`)
+
+### `LoginForm`
+Full-page login form. No shadcn/ui dependencies — uses raw HTML elements with custom styling. Glass card on gradient background. Ignite Nexus logo. Amber accent palette.
+
+Props: none (all logic self-contained via Supabase `signInWithPassword`).
+
+---
+
+## Admin components (`src/components/admin/`)
+
+### `AdminSidebar.tsx`
+Sidebar with module-gated navigation. Reads `adminModules` + `isSuperAdmin` from server-provided props to filter visible items. `LogoFull()` in header. "Panel profesor" pill-link (amber) in footer.
+
+Module keys (must match `admin_permissions.module`): `schools`, `teachers`, `students`, `enrollments`, `projects`, `skills`, `project_maps`, `validation`, `sessions_dashboard`, `resources`, `attitudes`, `timesheet`, `absences`, `stock`.
+
+---
+
+### Sessions Dashboard (`src/components/admin/sessions-dashboard/`)
+
+All components in this folder build the staffing management UI. Constraint: do not modify teacher or student components from here.
+
+#### `SessionsDashboard`
+Client. Root orchestrator. Receives `StaffingSlot[]` + `Worker[]` + `weekStart` + `today` from server page. Manages:
+- Week navigation (prev/next via URL `?week=YYYY-MM-DD`)
+- Team filter (dropdown derived from slots)
+- Selected slot state → opens `SlotDetailPanel`
+- Audit panel open state → opens `AuditPanel`
+
+Props: `{ slots: StaffingSlot[], workers: Worker[], weekStart: string, today: string, locale: string }`
+
+#### `WeekGrid`
+Client. Renders the school → group × day matrix. Derives school/group structure from `StaffingSlot[]` (order preserved from server). Calls `onSlotClick` when a cell is clicked.
+
+Props: `{ slots, workerNames: Map<string, string>, weekStart, today, onSlotClick }`
+
+Layout: rows = groups, columns = Mon–Fri. Each cell is one `GroupDayCell`.
+
+#### `GroupDayCell`
+Client. Renders the visual state of one group+day slot. Shows:
+- Staffing status dot (green = covered, amber = at minimum, red = under minimum)
+- Session status badge if session exists
+- Substitute count badge
+- Absent workers with strikethrough
+
+Props: `{ slot: StaffingSlot, workerNames, onClick }`
+
+#### `SlotDetailPanel`
+Client. Sheet (right slide-over) opened when a cell is clicked. Shows:
+- Info: school, date, excused reason
+- **Min teachers section** — `MinTeachersEditor` inline component
+- **Permanent team** — list with mark/unmark absent buttons
+- **Substitutes** — list with remove buttons + "Add substitute" opens `SubstitutePanel`
+- "Manage team" button opens `PermanentAssignmentDialog`
+
+Props: `{ slot: StaffingSlot, workerNames, onClose }`
+
+Contains inline component **`MinTeachersEditor`**:
+- Displays current required count with coverage indicator (green/red dot)
+- Edit mode: number input + save/cancel
+- On save: calls `updateSlotMinTeachers(slotRef, value)` then `router.refresh()`
+- `useEffect` syncs local state from prop after refresh
+
+#### `SubstitutePanel`
+Client. Dialog showing workers classified in 5 availability tiers. Opened from `SlotDetailPanel`.
+
+Props: `{ slot: StaffingSlot, onClose }`
+
+Each tier rendered via internal `WorkerSection`:
+- P1 Surplus (green) — `showAdd={true}`
+- P2 Available (neutral) — `showAdd={true}`
+- P3 Critical (red) — `showAdd={true}`, `warning="Clase con mínimo justo — quedará sin cobertura"`
+- P4 Unavailable (muted) — `showAdd={false}`
+- P5 Inactive (muted) — `showAdd={false}`
+
+Worker search input filters all sections simultaneously.
+
+#### `PermanentAssignmentDialog`
+Client. Dialog for adding/removing permanent team members (writes `group_assignments`). Opened from `SlotDetailPanel`.
+
+Props: `{ group: { id, name }, sessionDate, onClose }`
+
+#### `AuditPanel`
+Client. Sheet showing `dashboard_change_log` entries for the week. Fetches via `getAuditLog()` on mount.
+
+Key display logic:
+- `absent_mark` entries auto-generated by `substitute_add` are **hidden** (matched via `autoAbsenceIds` set built from all `substitute_add` entries in the list)
+- `substitute_add` shows sub-line: "↳ Ausencia automática aplicada en N clase(s)"
+- `min_teachers_update` shows sub-line with new required count. No revert button.
+- Revert button shown for `substitute_add` and `absent_mark` regardless of `isSessionChange`
+
+Props: `{ open: boolean, onClose }`
+
+---
+
+### Schools (`src/components/admin/schools/`)
+
+| Component | Description |
+|-----------|-------------|
+| `SchoolsList` | List of schools with groups; expandable rows |
+| `AddSchoolDialog` | Create school form |
+| `AddGroupDialog` | Create group form with schedule (weekday, start, end times) |
+| `GroupDetailClient` | Full admin view of a group: sessions table, enrollment management, eval editing, audit sheet |
+
+---
+
+### Teachers (`src/components/admin/teachers/`)
+
+| Component | Description |
+|-----------|-------------|
+| `TeachersList` | Paginated + searchable list of workers |
+| `AddTeacherDialog` | Create worker + auth account |
+| `PermissionsGrid` | Per-module can_view/can_edit toggles; superadmin toggle |
+
+---
+
+### Students (`src/components/admin/students/`)
+
+| Component | Description |
+|-----------|-------------|
+| `StudentsList` | Paginated + searchable list via RPC |
+| `EditStudentDialog` | Edit name, status |
+| `GroupsCard` | Current and historical groups |
+| `XPTrajectory` | Academic + attitude XP by branch over time |
+| `EvaluationHistory` | Project evaluations with editable xp_multiplier_pct |
+| `AttitudeLog` | Attitude actions applied to student |
+
+---
+
+### Other admin
+
+| Folder | Components |
+|--------|-----------|
+| `enrollments/` | `EnrollmentStats`, `RecentActivity`, `CSVUploadTool`, `BulkDeactivateTool` |
+| `settings/` | `PlatformNameForm`, `SchoolYearsSection`, `CreateSchoolYearDialog`, `CloseCourseDialog` |
+| `project-maps/` | `MapsList`, `CreateMapDialog`, `MapEditor` (React Flow–based graph editor) |
+| `validation/` | `ValidationList`, `ValidationPanel` (split panel, lazy trajectory load) |
+| `absences/` | `AbsencesAdminList` (tabs by status, approve/reject) |
+| `resources/` | `ResourcesAdminList`, `ResourceDialog` (visibility config: role + school/group scope) |
+
+---
+
+## Teacher components (`src/components/teacher/`)
+
+**Hard constraint**: never modified from admin code.
+
+### `TeacherNav.tsx`
+Navigation bar. Glass effect (backdrop-filter blur + translucent background). Active link indicator in amber.
+
+### Group (`src/components/teacher/group/`)
+
+| Component | Description |
+|-----------|-------------|
+| `TodaySessionSection` | Shows oldest pending session (`closestSession`) or empty state. No date/today logic. |
+| `ActiveSessionForm` | Attendance checkboxes, teacher comment, traffic light, Guardar/Finalizar/Excusar buttons |
+| `FinalizeDialog` | Traffic light + "proyecto completado" checkbox. Opens `EvaluationModal` if project completed. |
+| `EvaluationModal` | Students × skills with xp_multiplier_pct (30–150%). Next-project selector as cards. Reusable for history editing. |
+| `SessionHistoryList` | Last 20 completed sessions. Inline edit panel. "Editar evaluación" for sessions with evaluations. |
+| `AttitudeButton` | Client wrapper managing `AttitudeModal` open state. Always visible in page header. |
+| `AttitudeModal` | Step 1: student grid + action list. Step 2: XP impact screen, auto-close 3s. |
+| `AttendanceHistorySection` | Per-student attendance history across sessions |
+| `ProjectMapReadOnly` | Read-only React Flow view of group's curriculum map |
+
+### Timesheet (`src/components/teacher/timesheet/`)
+
+| Component | Description |
+|-----------|-------------|
+| `TimesheetToggle` | Clock in/out button. Determines current state from most recent entry type. |
+| `TimesheetHistoryList` | Daily totals for last 14 days |
+
+### Absences (`src/components/teacher/absences/`)
+
+| Component | Description |
+|-----------|-------------|
+| `AbsencesList` | Server async component. Shows teacher's own absences with status badges. |
+| `RequestAbsenceDialog` | Absence request form: reason dropdown, date range, optional comment. |
+
+### Resources (`src/components/teacher/resources/`)
+
+| Component | Description |
+|-----------|-------------|
+| `ResourcesList` | Server async component. Shows visible resources per teacher's RLS scope. |
+
+---
+
+## Student components (`src/components/student/`)
+
+**Hard constraint**: never modified from admin code.
+
+### `StudentPortal.tsx`
+Monolithic client component for the student/family portal. Key internals:
+
+| Sub-element | Description |
+|-------------|-------------|
+| `FamSeal` | Circular SVG seal badge showing student level |
+| `FamColeccionPin` | Horizontal scroll of project collection pins |
+| `RevealDiv` + `useFadeIn` | IntersectionObserver-based fade-in on scroll |
+| `BRANCH_KEY_MAP` | Normalizes branch keys for `BRANCH_MINI` icon lookup |
+
+Theme: `.theme-student` applied at layout level (gamified palette, animations, `tw-animate-css`).
+
+---
+
+## Design system
+
+### Themes
+
+| Theme class | Applied to | Palette |
+|-------------|-----------|---------|
+| (default) | Admin | Neutral — CSS variables from shadcn base-nova |
+| `.theme-teacher` | Teacher layout | Oat/cream `#FEFCF8`, amber `#FBB03B`, soft blue `rgba(62,111,168,*)` |
+| `.theme-student` | Student layout | Gamified — vivid colors, animations via `tw-animate-css` |
+
+Theme classes are applied by the route group layout (`(teacher)/layout.tsx`, `(student)/layout.tsx`).
+
+### Glass card pattern (teacher UI)
+
+Used in `TeacherNav`, `GroupCard`, `QuickAccessBar`:
+```css
+background: rgba(255, 255, 255, 0.6);
+backdrop-filter: blur(12px);
+border: 1px solid rgba(255, 255, 255, 0.4);
+```
+
+### Button `render` prop (base-nova / @base-ui)
+
+```tsx
+// ✅ Correct
+<Button render={<Link href="/path" />}>Label</Button>
+<DialogClose render={<Button type="button" variant="outline" />}>Cancel</DialogClose>
+
+// ❌ Wrong — asChild does not exist in @base-ui/react
+<Button asChild><Link href="/path">Label</Link></Button>
+```

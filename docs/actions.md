@@ -46,25 +46,31 @@ Teacher-facing session management.
 
 ## `actions/sessions-dashboard.ts`
 
-Admin sessions dashboard mutations.
+Admin sessions dashboard mutations. Input key type: `SlotRef = { groupId, slotDate, startTime, endTime }` — used instead of sessionId for all staffing mutations.
+
+**Data layer (not actions):** `getWeekStaffing(weekStart, weekEnd)` lives in `src/lib/data/schools.ts`. Returns `StaffingSlot[]` built from `group_schedule` + `group_assignments` + STAs. Sessions optional.
 
 | Function | Auth | Description |
 |---------|------|-------------|
-| `updateSessionStatus` | dashboardAccess | Update status (pending/completed/excused) + excused_reason |
-| `updateSessionMinTeachers` | dashboardAccess | Set min_teachers_required |
-| `updateSessionProject` | dashboardAccess | Assign a project to a session |
-| `markAbsent` | dashboardAccess | Create session_teacher_assignment (absent) + log change |
-| `unmarkAbsent` | dashboardAccess | Deactivate absent STA + log change |
-| `addSubstitute` | dashboardAccess | Create STA (substitute) + log change |
-| `removeSubstitute` | dashboardAccess | Deactivate substitute STA + log change |
+| `getWorkerAvailability(slot)` | dashboardAccess | Returns workers classified P1–P5. Reads `group_schedule.min_teachers_required` as canonical threshold. Merges session-scoped and slot-scoped absent STAs for effectiveCount. |
+| `addSubstitute(slot, workerId)` | dashboardAccess | Creates slot-scoped STA (`session_id=null`). Auto-absences surplus workers in overlapping groups — writes STAs with both `session_id` (if exists) and slot fields. Skips auto-absence for critical groups (P3). Logs to `dashboard_change_log` with `auto_absence_ids[]` in `new_state`. |
+| `removeSubstitute(staId)` | dashboardAccess | Deactivates substitute STA + logs change |
+| `markAbsent(slot, workerId)` | dashboardAccess | Creates slot-scoped STA (`type='absent'`). Writes both `session_id` and slot fields. |
+| `unmarkAbsent(staId)` | dashboardAccess | Deactivates absent STA. Works for both session-scoped and slot-scoped. |
+| `updateSlotMinTeachers(slot, n)` | dashboardAccess | Writes `n` to `group_schedule.min_teachers_required` (canonical). Also updates `sessions.min_teachers_required` if session exists for that date/time. Logs `min_teachers_update` to `dashboard_change_log` (not reversible). |
 | `addPermanentAssignment` | dashboardAccess | Create group_assignment (permanent) + log change |
 | `removePermanentAssignment` | dashboardAccess | End-date group_assignment + log change |
-| `revertChange` | dashboardAccess | Undo a logged change by change_log id |
+| `revertChange(changeId)` | dashboardAccess | Reverts a logged change. For `substitute_add`: deactivates substitute STA + all STAs in `new_state.auto_absence_ids[]`. countQuery uses `session_id` if present, else `group_id`, else no-match. |
+| `getAuditLog()` | dashboardAccess | Read dashboard_change_log entries. Returns `ChangeLogEntry[]` with `autoAbsenceIds`, `newState`, `isSessionChange`. |
+| `getGroupAuditLog(groupId)` | dashboardAccess | Audit log filtered by group |
 | `getGroupProjects` | dashboardAccess | Read projects for a group's planning, flagging already-completed |
 | `getGroupPermanentAssignments` | dashboardAccess | Read permanent assignments for a group |
+| `getSessionTeam` | dashboardAccess | Read current team (permanent + changes) for a session |
 | `searchWorkersForAssignment` | dashboardAccess | Search workers for assignment to a group |
-| `getAuditLog` | dashboardAccess | Read dashboard_change_log entries |
-| `createSessionForGroup` | dashboardAccess | Manually create a session |
+| `generateGroupSessions` | dashboardAccess | Manually generate sessions for a group |
+| `updateSessionStatus` | dashboardAccess | Update status + excused_reason. Used by admin group detail, not staffing UI. |
+| `updateSessionMinTeachers` | dashboardAccess | Set `sessions.min_teachers_required`. Used by admin group detail, not staffing UI (use `updateSlotMinTeachers` for staffing). |
+| `updateSessionProject` | dashboardAccess | Assign project to a session. Used by admin group detail, not staffing UI. |
 
 ---
 

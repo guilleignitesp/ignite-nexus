@@ -137,6 +137,265 @@ export const getActiveWorkers = unstable_cache(
   { tags: ['workers'], revalidate: false }
 )
 
+// ─── Staffing types ───────────────────────────────────────────
+
+export interface SlotRef {
+  groupId: string
+  slotDate: string
+  startTime: string
+  endTime: string
+}
+
+export interface StaffingSlot {
+  groupId: string
+  groupName: string
+  schoolId: string
+  schoolName: string
+  teamId: string | null
+  teamName: string | null
+  slotDate: string
+  startTime: string
+  endTime: string
+  sessionId: string | null
+  sessionStatus: 'pending' | 'completed' | 'excused' | null
+  minTeachersRequired: number
+  projectId: string | null
+  projectName: string | null
+  excusedReason: string | null
+  permanentWorkers: {
+    assignmentId: string
+    workerId: string
+    firstName: string
+    lastName: string
+  }[]
+  teacherChanges: {
+    id: string
+    workerId: string
+    type: 'substitute' | 'absent'
+    isActive: boolean
+  }[]
+}
+
+export interface WorkerLayerItem {
+  id: string
+  firstName: string
+  lastName: string
+  currentGroupName?: string
+  differentSchool?: boolean
+}
+
+export interface WorkerAvailabilityResult {
+  p1Surplus: WorkerLayerItem[]
+  p2Free: WorkerLayerItem[]
+  p3Critical: WorkerLayerItem[]
+  p4Unavailable: WorkerLayerItem[]
+  p5Inactive: WorkerLayerItem[]
+}
+
+// ─── getWeekStaffing ──────────────────────────────────────────
+
+export async function getWeekStaffing(
+  weekStart: string,
+  weekEnd: string
+): Promise<StaffingSlot[]> {
+  const supabase = await createServerClient()
+
+  type RawSchoolForStaffing = {
+    id: string
+    name: string
+    team_id: string | null
+    teams: { id: string; name: string } | null
+    groups: {
+      id: string
+      name: string
+      is_active: boolean
+      group_schedule: { weekday: number; start_time: string; end_time: string; min_teachers_required: number }[]
+    }[]
+  }
+
+  type RawSessionForStaffing = {
+    id: string
+    session_date: string
+    start_time: string
+    end_time: string
+    min_teachers_required: number
+    status: string
+    is_consolidated: boolean
+    project_id: string | null
+    excused_reason: string | null
+    projects: { id: string; name: string } | null
+    plannings: { group_id: string } | null
+    session_teacher_assignments: {
+      id: string
+      worker_id: string
+      type: string
+      is_active: boolean
+    }[]
+  }
+
+  type RawSlotSTA = {
+    id: string
+    group_id: string
+    slot_date: string
+    start_time_local: string
+    end_time_local: string
+    worker_id: string
+    type: string
+    is_active: boolean
+  }
+
+  type RawGroupAssignmentForStaffing = {
+    id: string
+    group_id: string
+    worker_id: string
+    start_date: string
+    end_date: string | null
+    workers: { id: string; first_name: string; last_name: string } | null
+  }
+
+  const [schoolsResult, sessionsResult, slotSTAsResult, assignmentsResult] = await Promise.all([
+    supabase
+      .from('schools')
+      .select(
+        'id, name, team_id, teams(id, name), groups(id, name, is_active, group_schedule(weekday, start_time, end_time, min_teachers_required))'
+      )
+      .eq('is_active', true)
+      .order('name'),
+    supabase
+      .from('sessions')
+      .select(
+        'id, session_date, start_time, end_time, min_teachers_required, status, is_consolidated, project_id, excused_reason, projects(id, name), plannings(group_id), session_teacher_assignments(id, worker_id, type, is_active)'
+      )
+      .gte('session_date', weekStart)
+      .lte('session_date', weekEnd),
+    supabase
+      .from('session_teacher_assignments')
+      .select('id, group_id, slot_date, start_time_local, end_time_local, worker_id, type, is_active')
+      .gte('slot_date', weekStart)
+      .lte('slot_date', weekEnd)
+      .not('group_id', 'is', null),
+    supabase
+      .from('group_assignments')
+      .select('id, group_id, worker_id, start_date, end_date, workers(id, first_name, last_name)')
+      .eq('type', 'permanent')
+      .eq('is_active', true),
+  ])
+
+  if (schoolsResult.error) throw new Error(schoolsResult.error.message)
+  if (sessionsResult.error) throw new Error(sessionsResult.error.message)
+
+  const schools = (schoolsResult.data ?? []) as unknown as RawSchoolForStaffing[]
+  const sessions = (
+    (sessionsResult.data ?? []) as unknown as RawSessionForStaffing[]
+  ).filter((s) => s.plannings !== null)
+  const slotSTAs = (slotSTAsResult.data ?? []) as unknown as RawSlotSTA[]
+
+  const sessionBySlotKey = new Map<string, RawSessionForStaffing>()
+  for (const s of sessions) {
+    const key = `${s.plannings!.group_id}|${s.session_date}|${s.start_time}`
+    sessionBySlotKey.set(key, s)
+  }
+
+  const permanentAssignments = (assignmentsResult.data ?? []) as unknown as RawGroupAssignmentForStaffing[]
+
+  // Index perm assignments by groupId
+  const permByGroupId = new Map<string, RawGroupAssignmentForStaffing[]>()
+  for (const a of permanentAssignments) {
+    if (!a.workers) continue
+    const arr = permByGroupId.get(a.group_id) ?? []
+    arr.push(a)
+    permByGroupId.set(a.group_id, arr)
+  }
+
+  const slotSTAsByKey = new Map<string, RawSlotSTA[]>()
+  for (const sta of slotSTAs) {
+    const key = `${sta.group_id}|${sta.slot_date}|${sta.start_time_local}`
+    const arr = slotSTAsByKey.get(key) ?? []
+    arr.push(sta)
+    slotSTAsByKey.set(key, arr)
+  }
+
+  const weekStartDate = new Date(`${weekStart}T12:00:00`)
+  const weekEndDate = new Date(`${weekEnd}T12:00:00`)
+  const slots: StaffingSlot[] = []
+
+  for (const school of schools) {
+    for (const group of school.groups ?? []) {
+      if (group.is_active === false) continue
+      for (const schedSlot of group.group_schedule ?? []) {
+        // weekday 1=Mon…5=Fri; weekStart is always Monday → offset = weekday - 1
+        const slotDate = new Date(weekStartDate)
+        slotDate.setDate(slotDate.getDate() + (schedSlot.weekday - 1))
+        if (slotDate > weekEndDate) continue
+        const slotDateStr = slotDate.toISOString().slice(0, 10)
+
+        const slotKey = `${group.id}|${slotDateStr}|${schedSlot.start_time}`
+        const session = sessionBySlotKey.get(slotKey) ?? null
+        const sessionSTAs = session?.session_teacher_assignments ?? []
+        const extraSTAs = slotSTAsByKey.get(slotKey) ?? []
+
+        const allSTAsMap = new Map<
+          string,
+          { id: string; workerId: string; type: 'substitute' | 'absent'; isActive: boolean }
+        >()
+        for (const sta of sessionSTAs) {
+          allSTAsMap.set(sta.id, {
+            id: sta.id,
+            workerId: sta.worker_id,
+            type: sta.type as 'substitute' | 'absent',
+            isActive: sta.is_active,
+          })
+        }
+        for (const sta of extraSTAs) {
+          allSTAsMap.set(sta.id, {
+            id: sta.id,
+            workerId: sta.worker_id,
+            type: sta.type as 'substitute' | 'absent',
+            isActive: sta.is_active,
+          })
+        }
+
+        const slotPermWorkers = (permByGroupId.get(group.id) ?? [])
+          .filter(
+            (a) =>
+              a.start_date <= slotDateStr &&
+              (a.end_date === null || a.end_date >= slotDateStr)
+          )
+          .map((a) => ({
+            assignmentId: a.id,
+            workerId: a.worker_id,
+            firstName: a.workers!.first_name,
+            lastName: a.workers!.last_name,
+          }))
+
+        slots.push({
+          groupId: group.id,
+          groupName: group.name,
+          schoolId: school.id,
+          schoolName: school.name,
+          teamId: school.team_id ?? null,
+          teamName: school.teams?.name ?? null,
+          slotDate: slotDateStr,
+          startTime: schedSlot.start_time,
+          endTime: schedSlot.end_time,
+          sessionId: session?.id ?? null,
+          sessionStatus: session
+            ? (session.status as 'pending' | 'completed' | 'excused')
+            : null,
+          minTeachersRequired: schedSlot.min_teachers_required,
+          projectId: session?.project_id ?? null,
+          projectName: session?.projects?.name ?? null,
+          excusedReason: session?.excused_reason ?? null,
+          permanentWorkers: slotPermWorkers,
+          teacherChanges: [...allSTAsMap.values()],
+        })
+      }
+    }
+  }
+
+  return slots
+}
+
 // ─── Group admin detail (live, authenticated) ─────────────────
 
 export interface GroupSession {
