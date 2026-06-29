@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
@@ -24,6 +24,17 @@ export function SessionsDashboard({ slots, workers, weekStart, today, locale }: 
 
   const [selectedSlot, setSelectedSlot] = useState<StaffingSlot | null>(null)
   const [auditOpen, setAuditOpen] = useState(false)
+
+  useEffect(() => {
+    if (!selectedSlot) return
+    const updated = slots.find(
+      (s) =>
+        s.groupId === selectedSlot.groupId &&
+        s.slotDate === selectedSlot.slotDate &&
+        s.startTime === selectedSlot.startTime
+    )
+    if (updated) setSelectedSlot(updated)
+  }, [slots])
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null)
 
   const teamsMap = new Map<string, { id: string; name: string }>()

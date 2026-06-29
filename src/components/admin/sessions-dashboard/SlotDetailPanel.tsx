@@ -104,7 +104,10 @@ export function SlotDetailPanel({ slot, workerNames, onClose }: Props) {
       <PermanentAssignmentDialog
         group={{ id: slot.groupId, name: slot.groupName }}
         sessionDate={slot.slotDate}
-        onClose={() => setPermanentOpen(false)}
+        onClose={() => {
+        router.refresh()
+        setPermanentOpen(false)
+      }}
       />
     )
   }

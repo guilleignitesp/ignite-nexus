@@ -525,6 +525,109 @@ export async function addSubstitute(
         new_state: { assignment_id: absenceId },
       })
     }
+
+    // Also handle permanent groups that have NO session — write slot-scoped auto-absence
+    const { data: permSchedules } = await supabase
+      .from('group_schedule')
+      .select('group_id, weekday, start_time, end_time, min_teachers_required')
+      .in('group_id', permGroupIds)
+
+    const slotWeekday = new Date(`${slot.slotDate}T12:00:00`).getDay()
+
+    for (const sched of ((permSchedules ?? []) as {
+      group_id: string
+      weekday: number
+      start_time: string
+      end_time: string
+      min_teachers_required: number
+    }[])) {
+      if (
+        sched.weekday !== slotWeekday ||
+        sched.start_time >= slot.endTime ||
+        sched.end_time <= slot.startTime
+      ) continue
+
+      const gid = sched.group_id
+
+      // Skip if this group already has a session (handled above)
+      const alreadyHandled = ((permSessions ?? []) as unknown as { plannings: { group_id: string } | null }[])
+        .some((ps) => ps.plannings?.group_id === gid)
+      if (alreadyHandled) continue
+
+      // Check if worker is already absent here (slot-scoped)
+      const { data: existingAbsent } = await supabase
+        .from('session_teacher_assignments')
+        .select('id')
+        .eq('worker_id', workerId)
+        .eq('group_id', gid)
+        .eq('slot_date', slot.slotDate)
+        .eq('type', 'absent')
+        .eq('is_active', true)
+        .maybeSingle()
+      if (existingAbsent) continue
+
+      // Calculate effectiveCount for this group
+      const { data: permForGroup } = await supabase
+        .from('group_assignments')
+        .select('worker_id')
+        .eq('group_id', gid)
+        .eq('type', 'permanent')
+        .lte('start_date', slot.slotDate)
+        .or(`end_date.is.null,end_date.gte.${slot.slotDate}`)
+
+      const allPermIds = ((permForGroup ?? []) as { worker_id: string }[]).map((a) => a.worker_id)
+
+      // Slot-scoped absences already written for this group
+      const { data: existingAbsents } = await supabase
+        .from('session_teacher_assignments')
+        .select('worker_id')
+        .eq('group_id', gid)
+        .eq('slot_date', slot.slotDate)
+        .eq('type', 'absent')
+        .eq('is_active', true)
+      const alreadyAbsentIds = new Set(
+        ((existingAbsents ?? []) as { worker_id: string }[]).map((a) => a.worker_id)
+      )
+      const effectiveCount = allPermIds.filter((id) => !alreadyAbsentIds.has(id)).length
+      const minRequired = sched.min_teachers_required ?? 1
+
+      if (effectiveCount <= minRequired) {
+        // Critical — skip, no auto-absence
+        continue
+      }
+
+      // Surplus — write slot-scoped auto-absence (no session_id)
+      const { data: absentSTA, error: absentError } = await supabase
+        .from('session_teacher_assignments')
+        .insert({
+          session_id: null,
+          group_id: gid,
+          slot_date: slot.slotDate,
+          start_time_local: sched.start_time,
+          end_time_local: sched.end_time,
+          worker_id: workerId,
+          type: 'absent',
+          valid_from: slot.slotDate,
+          valid_until: slot.slotDate,
+          is_active: true,
+        })
+        .select('id')
+        .single()
+      if (absentError) throw new Error(absentError.message)
+
+      const absenceId = (absentSTA as { id: string }).id
+      autoAbsenceIds.push(absenceId)
+
+      await supabase.from('dashboard_change_log').insert({
+        session_id: null,
+        group_id: gid,
+        worker_id: workerId,
+        changed_by: changedBy,
+        change_type: 'absent_mark',
+        previous_state: null,
+        new_state: { assignment_id: absenceId },
+      })
+    }
   }
 
   // Insert slot-based substitute STA
