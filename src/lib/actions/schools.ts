@@ -561,3 +561,191 @@ export async function getGroupEnrollmentHistory(
       isActive: r.is_active,
     }))
 }
+
+export async function deactivateGroup(
+  groupId: string
+): Promise<{ deactivatedEnrollments: number; deactivatedAssignments: number }> {
+  await assertSchoolsAccess()
+  const supabase = await createClient()
+
+  // Find last session date for this group via its plannings
+  const { data: plannings } = await supabase
+    .from('plannings')
+    .select('id')
+    .eq('group_id', groupId)
+  const planningIds = (plannings ?? []).map((p: { id: string }) => p.id)
+  let lastSessionDate: string
+  if (planningIds.length > 0) {
+    const { data: sessions } = await supabase
+      .from('sessions')
+      .select('session_date')
+      .in('planning_id', planningIds)
+      .order('session_date', { ascending: false })
+      .limit(1)
+    lastSessionDate =
+      (sessions?.[0] as unknown as { session_date: string } | undefined)?.session_date ??
+      new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+  } else {
+    lastSessionDate = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+  }
+
+  // Deactivate all active enrollments
+  const { data: activeEnrollments } = await supabase
+    .from('group_enrollments')
+    .select('id, student_id')
+    .eq('group_id', groupId)
+    .eq('is_active', true)
+  const enrollments = (activeEnrollments ?? []) as { id: string; student_id: string }[]
+
+  if (enrollments.length > 0) {
+    await supabase
+      .from('group_enrollments')
+      .update({ is_active: false, left_at: new Date().toISOString() })
+      .in('id', enrollments.map((e) => e.id))
+
+    for (const e of enrollments) {
+      const { data: others } = await supabase
+        .from('group_enrollments')
+        .select('id')
+        .eq('student_id', e.student_id)
+        .eq('is_active', true)
+        .limit(1)
+      if (!others || others.length === 0) {
+        await supabase.from('students').update({ status: 'inactive' }).eq('id', e.student_id)
+      }
+    }
+  }
+
+  // Deactivate all active open-ended assignments
+  const { data: activeAssignments } = await supabase
+    .from('group_assignments')
+    .select('id, worker_id')
+    .eq('group_id', groupId)
+    .eq('is_active', true)
+    .is('end_date', null)
+  const assignments = (activeAssignments ?? []) as { id: string; worker_id: string }[]
+
+  if (assignments.length > 0) {
+    const { data: authData } = await supabase.auth.getUser()
+    const changedBy = authData?.user?.id ?? ''
+
+    await supabase
+      .from('group_assignments')
+      .update({ end_date: lastSessionDate, is_active: false })
+      .in('id', assignments.map((a) => a.id))
+
+    for (const a of assignments) {
+      await supabase.from('dashboard_change_log').insert({
+        session_id: null,
+        group_id: groupId,
+        worker_id: a.worker_id,
+        changed_by: changedBy,
+        change_type: 'permanent_remove',
+        previous_state: { assignment_id: a.id },
+      })
+    }
+  }
+
+  const { error } = await supabase.from('groups').update({ is_active: false }).eq('id', groupId)
+  if (error) throw new Error(error.message)
+
+  updateTag('schools')
+  return { deactivatedEnrollments: enrollments.length, deactivatedAssignments: assignments.length }
+}
+
+export async function activateGroup(groupId: string): Promise<void> {
+  await assertSchoolsAccess()
+  const supabase = await createClient()
+  const { error } = await supabase.from('groups').update({ is_active: true }).eq('id', groupId)
+  if (error) throw new Error(error.message)
+  updateTag('schools')
+}
+
+export async function updateGroupInfo(
+  groupId: string,
+  data: { name?: string; ageRange?: string | null }
+): Promise<void> {
+  await assertSchoolsAccess()
+  const supabase = await createClient()
+  const updates: Record<string, unknown> = {}
+  if (data.name !== undefined) updates.name = data.name.trim()
+  if (data.ageRange !== undefined) updates.age_range = data.ageRange ?? null
+  if (Object.keys(updates).length === 0) return
+  const { error } = await supabase.from('groups').update(updates).eq('id', groupId)
+  if (error) throw new Error(error.message)
+  updateTag('schools')
+}
+
+export async function updateGroupSchedule(
+  groupId: string,
+  slots: { id?: string; weekday: number; startTime: string; endTime: string }[]
+): Promise<{ assignmentsCleared: number; warning: boolean }> {
+  await assertSchoolsAccess()
+  const supabase = await createClient()
+
+  // Compare existing vs incoming to determine deletes/updates/inserts
+  const { data: existing } = await supabase
+    .from('group_schedule')
+    .select('id')
+    .eq('group_id', groupId)
+  const existingIds = new Set((existing ?? []).map((s: { id: string }) => s.id))
+  const incomingIds = new Set(slots.filter((s) => s.id).map((s) => s.id!))
+
+  const toDelete = [...existingIds].filter((id) => !incomingIds.has(id))
+  if (toDelete.length > 0) {
+    await supabase.from('group_schedule').delete().in('id', toDelete)
+  }
+
+  for (const slot of slots.filter((s) => s.id && existingIds.has(s.id!))) {
+    await supabase
+      .from('group_schedule')
+      .update({ weekday: slot.weekday, start_time: slot.startTime, end_time: slot.endTime })
+      .eq('id', slot.id!)
+  }
+
+  const toInsert = slots.filter((s) => !s.id)
+  if (toInsert.length > 0) {
+    await supabase.from('group_schedule').insert(
+      toInsert.map((s) => ({
+        group_id: groupId,
+        weekday: s.weekday,
+        start_time: s.startTime,
+        end_time: s.endTime,
+      }))
+    )
+  }
+
+  // Clear open-ended assignments when schedule changes
+  const { data: activeAssignments } = await supabase
+    .from('group_assignments')
+    .select('id, worker_id')
+    .eq('group_id', groupId)
+    .eq('is_active', true)
+    .is('end_date', null)
+  const assignments = (activeAssignments ?? []) as { id: string; worker_id: string }[]
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+
+  if (assignments.length > 0) {
+    const { data: authData } = await supabase.auth.getUser()
+    const changedBy = authData?.user?.id ?? ''
+
+    await supabase
+      .from('group_assignments')
+      .update({ end_date: yesterday, is_active: false })
+      .in('id', assignments.map((a) => a.id))
+
+    for (const a of assignments) {
+      await supabase.from('dashboard_change_log').insert({
+        session_id: null,
+        group_id: groupId,
+        worker_id: a.worker_id,
+        changed_by: changedBy,
+        change_type: 'permanent_remove',
+        previous_state: { assignment_id: a.id },
+      })
+    }
+  }
+
+  updateTag('schools')
+  return { assignmentsCleared: assignments.length, warning: assignments.length > 0 }
+}

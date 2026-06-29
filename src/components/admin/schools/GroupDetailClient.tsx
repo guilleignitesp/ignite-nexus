@@ -35,6 +35,10 @@ import {
   getSessionAttendancesForAdmin,
   getGroupEnrollmentHistory,
   getSessionEvaluationForAdmin,
+  deactivateGroup,
+  activateGroup,
+  updateGroupInfo,
+  updateGroupSchedule,
 } from '@/lib/actions/schools'
 import { getGroupProjects, getGroupAuditLog, type ChangeLogEntry } from '@/lib/actions/sessions-dashboard'
 import type { GroupAdminDetail, GroupSession } from '@/lib/data/schools'
@@ -153,6 +157,25 @@ export function GroupDetailClient({ group }: Props) {
   const [deleteConfirm, setDeleteConfirm] = useState(false)
 
   const [error, setError] = useState<string | null>(null)
+
+  // Group deactivate/activate
+  const [deactivateConfirm, setDeactivateConfirm] = useState(false)
+  const [isDeactivating, setIsDeactivating] = useState(false)
+
+  // Edit group info
+  const [editInfoOpen, setEditInfoOpen] = useState(false)
+  const [editName, setEditName] = useState(group.name)
+  const [editAgeRange, setEditAgeRange] = useState(group.ageRange ?? '')
+  const [editInfoSaving, setEditInfoSaving] = useState(false)
+
+  // Edit schedule
+  type ScheduleSlotEdit = { id?: string; weekday: number; startTime: string; endTime: string }
+  const [editingSchedule, setEditingSchedule] = useState(false)
+  const [scheduleSlots, setScheduleSlots] = useState<ScheduleSlotEdit[]>(
+    group.schedule.map((s) => ({ id: s.id, weekday: s.weekday, startTime: s.startTime, endTime: s.endTime }))
+  )
+  const [scheduleSaving, setScheduleSaving] = useState(false)
+  const [scheduleWarning, setScheduleWarning] = useState(false)
 
   // Evaluation edit
   type EvalState = { sessionId: string; projectId: string; existingEvals: { studentId: string; skills: { skillId: string; xpAwarded: number }[] }[] }
@@ -322,17 +345,154 @@ export function GroupDetailClient({ group }: Props) {
     }
   }
 
+  async function handleDeactivate() {
+    setIsDeactivating(true)
+    setError(null)
+    try {
+      await deactivateGroup(group.id)
+      setDeactivateConfirm(false)
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error')
+    } finally {
+      setIsDeactivating(false)
+    }
+  }
+
+  async function handleActivate() {
+    setError(null)
+    try {
+      await activateGroup(group.id)
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error')
+    }
+  }
+
+  async function handleSaveInfo() {
+    setEditInfoSaving(true)
+    setError(null)
+    try {
+      await updateGroupInfo(group.id, {
+        name: editName.trim() || group.name,
+        ageRange: editAgeRange.trim() || null,
+      })
+      setEditInfoOpen(false)
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error')
+    } finally {
+      setEditInfoSaving(false)
+    }
+  }
+
+  async function handleSaveSchedule() {
+    setScheduleSaving(true)
+    setError(null)
+    try {
+      const result = await updateGroupSchedule(group.id, scheduleSlots)
+      setEditingSchedule(false)
+      setScheduleWarning(result.warning)
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error')
+    } finally {
+      setScheduleSaving(false)
+    }
+  }
+
   const alreadyEnrolledResults = searchResults.filter((r) => r.alreadyEnrolled)
   const nonEnrolledResults = searchResults.filter((r) => !r.alreadyEnrolled)
   const showCreateButton = searched && (nonEnrolledResults.length === 0 || showCreateOption)
 
   return (
     <div className="space-y-8">
+      {!group.isActive && (
+        <div style={{ background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.2)', borderRadius: 8, padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(220,38,38,0.12)', color: '#C0392B', textTransform: 'uppercase', flexShrink: 0 }}>Inactivo</span>
+          <span style={{ fontSize: 13, color: '#C0392B' }}>Este grupo está desactivado. No aparece en el panel de sesiones ni en los grupos de los profes.</span>
+        </div>
+      )}
+
       {/* Schedule */}
-      {group.schedule.length > 0 && (
-        <section className="space-y-2">
+      <section className="space-y-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <h2 className="text-base font-semibold">{t('scheduleTitle')}</h2>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => { setEditName(group.name); setEditAgeRange(group.ageRange ?? ''); setEditInfoOpen(true) }}>
+              Editar info
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => { setScheduleSlots(group.schedule.map((s) => ({ id: s.id, weekday: s.weekday, startTime: s.startTime, endTime: s.endTime }))); setScheduleWarning(false); setEditingSchedule(true) }}>
+              Editar horario
+            </Button>
+            {group.isActive ? (
+              <Button size="sm" variant="outline" style={{ color: 'var(--destructive)', borderColor: 'color-mix(in srgb, var(--destructive) 40%, transparent)' }} onClick={() => setDeactivateConfirm(true)}>
+                Desactivar
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" onClick={handleActivate}>
+                Reactivar
+              </Button>
+            )}
+          </div>
+        </div>
+        {editingSchedule ? (
+          <div className="space-y-3">
+            {scheduleSlots.length === 0 && (
+              <p className="text-sm text-muted-foreground">Sin días. Añade al menos uno.</p>
+            )}
+            {scheduleSlots.map((slot, i) => (
+              <div key={i} className="flex items-center gap-2 flex-wrap">
+                <select
+                  value={slot.weekday}
+                  onChange={(e) => setScheduleSlots((prev) => prev.map((s, j) => j === i ? { ...s, weekday: Number(e.target.value) } : s))}
+                  disabled={scheduleSaving}
+                  className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
+                >
+                  {([1, 2, 3, 4, 5] as const).map((d) => (
+                    <option key={d} value={d}>{WEEKDAY_LABEL[d]}</option>
+                  ))}
+                </select>
+                <Input
+                  type="time"
+                  value={slot.startTime.slice(0, 5)}
+                  onChange={(e) => setScheduleSlots((prev) => prev.map((s, j) => j === i ? { ...s, startTime: e.target.value } : s))}
+                  disabled={scheduleSaving}
+                  className="w-32"
+                />
+                <span className="text-muted-foreground">–</span>
+                <Input
+                  type="time"
+                  value={slot.endTime.slice(0, 5)}
+                  onChange={(e) => setScheduleSlots((prev) => prev.map((s, j) => j === i ? { ...s, endTime: e.target.value } : s))}
+                  disabled={scheduleSaving}
+                  className="w-32"
+                />
+                <Button size="xs" variant="ghost" disabled={scheduleSaving} onClick={() => setScheduleSlots((prev) => prev.filter((_, j) => j !== i))}>
+                  ✕
+                </Button>
+              </div>
+            ))}
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" disabled={scheduleSaving} onClick={() => setScheduleSlots((prev) => [...prev, { weekday: 1, startTime: '16:00', endTime: '18:00' }])}>
+                + Añadir día
+              </Button>
+              <Button size="sm" disabled={scheduleSaving || scheduleSlots.length === 0} onClick={handleSaveSchedule}>
+                {scheduleSaving ? 'Guardando...' : 'Guardar horario'}
+              </Button>
+              <Button size="sm" variant="ghost" disabled={scheduleSaving} onClick={() => setEditingSchedule(false)}>
+                Cancelar
+              </Button>
+            </div>
+            {scheduleWarning && (
+              <p className="text-xs text-orange-600">Los profes con asignación permanente han sido eliminados del grupo. Reasígnalos desde el panel de sesiones.</p>
+            )}
+          </div>
+        ) : (
           <div className="flex flex-wrap gap-2">
+            {group.schedule.length === 0 && (
+              <p className="text-sm text-muted-foreground">Sin horario. Usa &quot;Editar horario&quot; para añadir días.</p>
+            )}
             {group.schedule.map((s, i) => (
               <span key={i} className="rounded-md border bg-muted px-3 py-1 text-sm">
                 {WEEKDAY_LABEL[s.weekday] ?? s.weekday}{' '}
@@ -345,8 +505,8 @@ export function GroupDetailClient({ group }: Props) {
               </span>
             )}
           </div>
-        </section>
-      )}
+        )}
+      </section>
 
       {/* Teachers */}
       <section className="space-y-3">
@@ -1010,6 +1170,73 @@ export function GroupDetailClient({ group }: Props) {
           </form>
         </DialogContent>
       </Dialog>
+      {/* Deactivate confirmation dialog */}
+      <Dialog open={deactivateConfirm} onOpenChange={setDeactivateConfirm}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Desactivar grupo</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Al desactivar <strong>{group.name}</strong>:
+            </p>
+            <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
+              <li>Se darán de baja todas las matrículas activas</li>
+              <li>Se eliminarán las asignaciones permanentes de profes</li>
+              <li>El grupo desaparecerá del panel de sesiones</li>
+            </ul>
+            <p className="text-sm text-muted-foreground">Puedes reactivarlo en cualquier momento.</p>
+          </div>
+          <DialogFooter>
+            <DialogClose render={<Button type="button" variant="outline" disabled={isDeactivating} />}>
+              Cancelar
+            </DialogClose>
+            <Button variant="destructive" disabled={isDeactivating} onClick={handleDeactivate}>
+              {isDeactivating ? 'Desactivando...' : 'Confirmar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit group info dialog */}
+      <Dialog open={editInfoOpen} onOpenChange={(o) => { if (!o) setEditInfoOpen(false) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Editar grupo</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-group-name">Nombre</Label>
+              <Input
+                id="edit-group-name"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                disabled={editInfoSaving}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-age-range">Edad / Cursos</Label>
+              <Input
+                id="edit-age-range"
+                value={editAgeRange}
+                onChange={(e) => setEditAgeRange(e.target.value)}
+                placeholder="ej. 8-10 años, 5º-6º Primaria..."
+                disabled={editInfoSaving}
+              />
+              <p style={{ fontSize: 11, color: 'var(--muted-foreground)', marginTop: 3 }}>Opcional</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose render={<Button type="button" variant="outline" disabled={editInfoSaving} />}>
+              Cancelar
+            </DialogClose>
+            <Button disabled={editInfoSaving || !editName.trim()} onClick={handleSaveInfo}>
+              {editInfoSaving ? 'Guardando...' : 'Guardar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {evalState && (
         <EvaluationModal
           open={true}

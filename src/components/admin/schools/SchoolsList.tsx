@@ -155,10 +155,15 @@ export function SchoolsList({ schools, schoolYears, locale, teams }: SchoolsList
                         </thead>
                         <tbody>
                           {school.groups.map((group) => (
-                            <tr key={group.id} className="border-b last:border-0">
+                            <tr key={group.id} className="border-b last:border-0" style={!group.isActive ? { opacity: 0.6 } : undefined}>
                               <td className="py-2 pr-4 font-medium">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   {group.name}
+                                  {!group.isActive && (
+                                    <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 7px', borderRadius: 20, background: 'rgba(220,38,38,0.08)', color: '#C0392B' }}>
+                                      Inactivo
+                                    </span>
+                                  )}
                                   {group.age_range && (
                                     <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 7px', borderRadius: 20, background: 'rgba(62,111,168,0.08)', color: '#4A6580' }}>
                                       {group.age_range}

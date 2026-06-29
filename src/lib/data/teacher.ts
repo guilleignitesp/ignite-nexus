@@ -541,13 +541,14 @@ export async function getAllGroupsForTeacher(): Promise<SchoolWithGroups[]> {
       id: string
       name: string
       age_range: string | null
+      is_active: boolean
       group_schedule: { weekday: number; start_time: string; end_time: string }[]
     }[]
   }
 
   const { data, error } = await supabase
     .from('schools')
-    .select('id, name, groups(id, name, age_range, group_schedule(weekday, start_time, end_time))')
+    .select('id, name, groups(id, name, age_range, is_active, group_schedule(weekday, start_time, end_time))')
     .eq('is_active', true)
     .order('name')
 
@@ -557,6 +558,7 @@ export async function getAllGroupsForTeacher(): Promise<SchoolWithGroups[]> {
     schoolId: school.id,
     schoolName: school.name,
     groups: (school.groups ?? [])
+      .filter((g) => g.is_active !== false)
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((g) => ({
         groupId: g.id,

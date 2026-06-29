@@ -90,6 +90,10 @@ Admin school and group management.
 | `getSessionEvaluationForAdmin` | schoolsAccess | Read evaluation + attendances for a session |
 | `getSessionAttendancesForAdmin` | schoolsAccess | Read attendance records |
 | `deleteProjectEvaluation` | schoolsAccess | Delete evaluation + skill_evaluations + revert XP |
+| `deactivateGroup(groupId)` | schoolsAccess | Set `groups.is_active=false`. Deactivates all active enrollments (`is_active=false, left_at=now()`), marks students inactive if no other active enrollments. End-dates open permanent assignments (`end_date=lastSessionDate, is_active=false`) and logs each to `dashboard_change_log` as `permanent_remove`. Returns `{ deactivatedEnrollments, deactivatedAssignments }`. |
+| `activateGroup(groupId)` | schoolsAccess | Set `groups.is_active=true`. Does not restore enrollments or assignments. |
+| `updateGroupInfo(groupId, { name?, ageRange? })` | schoolsAccess | Update `groups.name` and/or `groups.age_range`. Only sends fields that are provided. |
+| `updateGroupSchedule(groupId, slots[])` | schoolsAccess | Replace group schedule: deletes removed slots, updates existing (matched by `id`), inserts new (no `id`). Clears all open permanent assignments and logs each as `permanent_remove`. Returns `{ assignmentsCleared, warning }`. |
 
 **Known gap**: Admin with `schools` module can access ANY school's sessions, not just the ones they manage.
 

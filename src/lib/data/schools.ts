@@ -18,6 +18,7 @@ export interface Group {
   id: string
   name: string
   age_range: string | null
+  isActive: boolean
   school_id: string
   school_year_id: string | null
   school_year_name: string | null
@@ -67,17 +68,17 @@ type RawSchool = {
 
 function transformSchools(raw: RawSchool[]): School[] {
   return raw.map((school) => {
-    const activeGroups = (school.groups ?? []).filter((g) => g.is_active !== false)
+    const allGroups = (school.groups ?? [])
 
     const today = new Date().toISOString().slice(0, 10)
     const uniqueStudents = new Set<string>()
-    const groups: Group[] = activeGroups.map((g) => {
+    const groups: Group[] = allGroups.map((g) => {
       const teachers: GroupTeacher[] = (g.group_assignments ?? [])
         .filter((a) => a.workers && (a.end_date === null || a.end_date >= today))
         .map((a) => a.workers as RawWorker)
 
       const enrollments = (g.group_enrollments ?? []).filter((e) => e.is_active)
-      enrollments.forEach((e) => uniqueStudents.add(e.student_id))
+      if (g.is_active !== false) enrollments.forEach((e) => uniqueStudents.add(e.student_id))
 
       const schedule: GroupScheduleItem[] = [...(g.group_schedule ?? [])].sort(
         (a, b) => a.weekday - b.weekday
@@ -89,6 +90,7 @@ function transformSchools(raw: RawSchool[]): School[] {
         id: g.id,
         name: g.name,
         age_range: g.age_range ?? null,
+        isActive: g.is_active !== false,
         school_id: school.id,
         school_year_id: g.school_year_id,
         school_year_name: schoolYear ? schoolYear.name : null,
@@ -434,7 +436,7 @@ export interface GroupAdminDetail {
   schoolId: string
   schoolName: string
   isActive: boolean
-  schedule: { weekday: number; startTime: string; endTime: string }[]
+  schedule: { id: string; weekday: number; startTime: string; endTime: string }[]
   hasActivePlanning: boolean
   planningId: string | null
   planningProjectMapId: string | null
@@ -472,7 +474,7 @@ type RawGroupDetail = {
   age_range: string | null
   is_active: boolean
   schools: { id: string; name: string } | null
-  group_schedule: { weekday: number; start_time: string; end_time: string }[]
+  group_schedule: { id: string; weekday: number; start_time: string; end_time: string }[]
   plannings: RawPlanning[]
   group_assignments: RawGroupAssignment[]
   group_enrollments: RawGroupEnrollment[]
@@ -503,7 +505,7 @@ export async function getGroupAdminDetail(
       .select(
         `id, name, age_range, is_active,
         schools(id, name),
-        group_schedule(weekday, start_time, end_time),
+        group_schedule(id, weekday, start_time, end_time),
         plannings(id, is_active, project_map_id, project_maps(id, name)),
         group_assignments(id, end_date, type, is_active, workers(id, first_name, last_name)),
         group_enrollments(id, is_active, students(id, first_name, last_name))`
@@ -616,7 +618,7 @@ export async function getGroupAdminDetail(
     isActive: raw.is_active,
     schedule: (raw.group_schedule ?? [])
       .sort((a, b) => a.weekday - b.weekday)
-      .map((s) => ({ weekday: s.weekday, startTime: s.start_time, endTime: s.end_time })),
+      .map((s) => ({ id: s.id, weekday: s.weekday, startTime: s.start_time, endTime: s.end_time })),
     hasActivePlanning: activePlanning !== null,
     planningId: activePlanning?.id ?? null,
     planningProjectMapId: activePlanning?.project_map_id ?? null,
