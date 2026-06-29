@@ -1050,14 +1050,15 @@ export async function getGroupProjects(
 
 export async function getGroupPermanentAssignments(
   groupId: string,
-  asOfDate?: string
+  asOfDate?: string,
+  slotRef?: SlotRef
 ): Promise<{ id: string; workerId: string; firstName: string; lastName: string }[]> {
   await assertDashboardAccess()
   const supabase = await createClient()
 
   const base = supabase
     .from('group_assignments')
-    .select('id, worker_id, workers(id, first_name, last_name)')
+    .select('id, worker_id, weekday, slot_start_time, slot_end_time, workers(id, first_name, last_name)')
     .eq('group_id', groupId)
     .eq('type', 'permanent')
 
@@ -1074,11 +1075,21 @@ export async function getGroupPermanentAssignments(
   type RawGA = {
     id: string
     worker_id: string
+    weekday: number | null
+    slot_start_time: string | null
+    slot_end_time: string | null
     workers: { id: string; first_name: string; last_name: string } | null
   }
 
+  const slotWeekday = slotRef ? new Date(`${slotRef.slotDate}T12:00:00`).getDay() : null
+
   return ((data ?? []) as unknown as RawGA[])
     .filter((a) => a.workers !== null)
+    .filter((a) => {
+      if (!slotRef || slotWeekday === null) return true
+      if (a.weekday === null || a.weekday === undefined) return true
+      return a.weekday === slotWeekday && a.slot_start_time === slotRef.startTime
+    })
     .map((a) => ({
       id: a.id,
       workerId: a.worker_id,
@@ -1117,7 +1128,8 @@ export async function addPermanentAssignment(
   groupId: string,
   workerId: string,
   force: boolean,
-  effectiveFromDate?: string
+  effectiveFromDate?: string,
+  slotRef?: SlotRef
 ): Promise<{ manualConflicts: number }> {
   const changedBy = await assertDashboardAccess()
   const supabase = await createClient()
@@ -1126,8 +1138,10 @@ export async function addPermanentAssignment(
   const effectiveDate = effectiveFromDate ?? today
 
   // Check if already assigned on effectiveDate
-  const existingCheck = effectiveFromDate
-    ? await supabase
+  const insertWeekday = slotRef ? new Date(`${slotRef.slotDate}T12:00:00`).getDay() : null
+
+  let idempotencyQuery = effectiveFromDate
+    ? supabase
         .from('group_assignments')
         .select('id')
         .eq('group_id', groupId)
@@ -1135,8 +1149,7 @@ export async function addPermanentAssignment(
         .eq('type', 'permanent')
         .lte('start_date', effectiveDate)
         .or(`end_date.is.null,end_date.gte.${effectiveDate}`)
-        .maybeSingle()
-    : await supabase
+    : supabase
         .from('group_assignments')
         .select('id')
         .eq('group_id', groupId)
@@ -1144,7 +1157,12 @@ export async function addPermanentAssignment(
         .is('end_date', null)
         .eq('type', 'permanent')
         .eq('is_active', true)
-        .maybeSingle()
+  if (slotRef && insertWeekday !== null) {
+    idempotencyQuery = idempotencyQuery
+      .eq('weekday', insertWeekday)
+      .eq('slot_start_time', slotRef.startTime)
+  }
+  const existingCheck = await idempotencyQuery.maybeSingle()
 
   if (existingCheck.data) return { manualConflicts: 0 }
 
@@ -1234,16 +1252,23 @@ export async function addPermanentAssignment(
   }
 
   // Insert group assignment
+  const insertPayload: Record<string, unknown> = {
+    worker_id: workerId,
+    group_id: groupId,
+    start_date: effectiveDate,
+    end_date: null,
+    type: 'permanent',
+    is_active: true,
+  }
+  if (slotRef && insertWeekday !== null) {
+    insertPayload.weekday = insertWeekday
+    insertPayload.slot_start_time = slotRef.startTime
+    insertPayload.slot_end_time = slotRef.endTime
+  }
+
   const { data: insertedGA, error: insertError } = await supabase
     .from('group_assignments')
-    .insert({
-      worker_id: workerId,
-      group_id: groupId,
-      start_date: effectiveDate,
-      end_date: null,
-      type: 'permanent',
-      is_active: true,
-    })
+    .insert(insertPayload)
     .select('id')
     .single()
 

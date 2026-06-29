@@ -339,6 +339,11 @@ export function GroupDetailClient({ group }: Props) {
                 {s.startTime.slice(0, 5)}–{s.endTime.slice(0, 5)}
               </span>
             ))}
+            {group.ageRange && (
+              <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 7px', borderRadius: 20, background: 'rgba(62,111,168,0.08)', color: '#4A6580', alignSelf: 'center' }}>
+                {group.ageRange}
+              </span>
+            )}
           </div>
         </section>
       )}

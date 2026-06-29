@@ -94,6 +94,15 @@ export default async function TeacherGroupPage({
                   {chip}
                 </span>
               ))}
+              {detail.ageRange && (
+                <span style={{
+                  fontSize: 12, fontWeight: 600, color: '#4A6580',
+                  background: 'rgba(62,111,168,0.08)', borderRadius: 20,
+                  padding: '3px 10px',
+                }}>
+                  {detail.ageRange}
+                </span>
+              )}
             </div>
 
             <p style={{ fontSize: 12, color: '#8BA3BC', marginTop: 6, fontWeight: 500 }}>

@@ -38,6 +38,7 @@ export async function updateSchoolTeam(
 
 export async function createGroup(input: {
   name: string
+  ageRange?: string | null
   schoolId: string
   schoolYearId: string | null
   schedule: { weekday: number; start_time: string; end_time: string }[]
@@ -49,6 +50,7 @@ export async function createGroup(input: {
     .from('groups')
     .insert({
       name: input.name.trim(),
+      age_range: input.ageRange ?? null,
       school_id: input.schoolId,
       school_year_id: input.schoolYearId,
       is_active: true,

@@ -17,6 +17,7 @@ export interface TeacherGroupCard {
   groupId: string
   groupName: string
   schoolName: string
+  ageRange: string | null
   schedule: ScheduleSlot[]
   activeStudentCount: number
   currentProjectName: string | null
@@ -93,6 +94,7 @@ export interface GroupDetail {
   groupId: string
   groupName: string
   schoolName: string
+  ageRange: string | null
   schedule: ScheduleSlot[]
   students: EnrolledStudent[]
   planning: GroupPlanningData | null
@@ -142,6 +144,7 @@ type RawPlanning = {
 type RawGroup = {
   id: string
   name: string
+  age_range: string | null
   is_active: boolean
   schools: { id: string; name: string } | null
   group_schedule: RawSchedule[]
@@ -203,7 +206,7 @@ export async function getTeacherDashboard(workerId: string): Promise<TeacherDash
       group_assignments(
         group_id, start_date, end_date,
         groups(
-          id, name, is_active,
+          id, name, age_range, is_active,
           schools(id, name),
           group_schedule(weekday, start_time, end_time),
           group_enrollments(is_active),
@@ -247,6 +250,7 @@ export async function getTeacherDashboard(workerId: string): Promise<TeacherDash
       groupId: g.id,
       groupName: g.name,
       schoolName: g.schools?.name ?? '',
+      ageRange: g.age_range ?? null,
       schedule: (g.group_schedule ?? []).map((s) => ({
         weekday: s.weekday,
         startTime: s.start_time,
@@ -268,7 +272,7 @@ export async function getTeacherDashboard(workerId: string): Promise<TeacherDash
 // ─── buildGroupDetail (shared logic) ─────────────────────────────────────
 
 const GROUP_FIELDS_SELECT = `
-  id, name, is_active,
+  id, name, age_range, is_active,
   schools(id, name),
   group_schedule(weekday, start_time, end_time),
   group_enrollments(
@@ -469,6 +473,7 @@ async function buildGroupDetail(g: RawGroup): Promise<GroupDetail> {
     groupId: g.id,
     groupName: g.name,
     schoolName: g.schools?.name ?? '',
+    ageRange: g.age_range ?? null,
     schedule,
     students,
     planning,
@@ -520,7 +525,7 @@ export async function getGroupDetailForAnyWorker(
 export interface SchoolWithGroups {
   schoolId: string
   schoolName: string
-  groups: { groupId: string; groupName: string; schedule: ScheduleSlot[] }[]
+  groups: { groupId: string; groupName: string; ageRange: string | null; schedule: ScheduleSlot[] }[]
 }
 
 export async function getAllGroupsForTeacher(): Promise<SchoolWithGroups[]> {
@@ -535,13 +540,14 @@ export async function getAllGroupsForTeacher(): Promise<SchoolWithGroups[]> {
     groups: {
       id: string
       name: string
+      age_range: string | null
       group_schedule: { weekday: number; start_time: string; end_time: string }[]
     }[]
   }
 
   const { data, error } = await supabase
     .from('schools')
-    .select('id, name, groups(id, name, group_schedule(weekday, start_time, end_time))')
+    .select('id, name, groups(id, name, age_range, group_schedule(weekday, start_time, end_time))')
     .eq('is_active', true)
     .order('name')
 
@@ -555,6 +561,7 @@ export async function getAllGroupsForTeacher(): Promise<SchoolWithGroups[]> {
       .map((g) => ({
         groupId: g.id,
         groupName: g.name,
+        ageRange: g.age_range ?? null,
         schedule: (g.group_schedule ?? []).map((s) => ({
           weekday: s.weekday,
           startTime: s.start_time,

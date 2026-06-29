@@ -108,6 +108,11 @@ export function GroupCard({ group, locale }: { group: TeacherGroupCard; locale: 
             <span style={{ fontSize: 13, fontWeight: 600, color: '#4A6580' }}>
               {formatTime(firstSlot.startTime)}–{formatTime(firstSlot.endTime)}
             </span>
+            {group.ageRange && (
+              <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 7px', borderRadius: 20, background: 'rgba(62,111,168,0.08)', color: '#4A6580' }}>
+                {group.ageRange}
+              </span>
+            )}
           </div>
         )}
 

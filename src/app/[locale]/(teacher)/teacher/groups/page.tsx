@@ -36,7 +36,18 @@ export default async function AllGroupsPage({
                   className="rounded-lg border bg-card p-4 space-y-3"
                 >
                   <div>
-                    <p className="font-medium">{group.groupName}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-medium">{group.groupName}</p>
+                      {group.ageRange && (
+                        <span style={{
+                          fontSize: 12, fontWeight: 600, color: '#4A6580',
+                          background: 'rgba(62,111,168,0.08)', borderRadius: 20,
+                          padding: '3px 10px',
+                        }}>
+                          {group.ageRange}
+                        </span>
+                      )}
+                    </div>
                     {group.schedule.length > 0 ? (
                       <p className="text-sm text-muted-foreground mt-0.5">
                         {group.schedule

@@ -163,6 +163,15 @@ When a P1 worker is added as substitute:
 
 **Critical groups (P3) are skipped**: no auto-absence is created when the worker's origin group is at minimum coverage. The substitute is still allowed.
 
+### Asignaciones permanentes por slot
+
+Un grupo con varias sesiones semanales puede tener profesores distintos en cada slot.
+`group_assignments.weekday` controla esto:
+- `weekday = NULL` → el profesor está asignado a TODOS los slots del grupo (comportamiento anterior)
+- `weekday = N` + `slot_start_time` → el profesor solo aparece en el slot que coincide con ese día y hora
+
+`PermanentAssignmentDialog` pasa siempre el `slotRef` del slot desde el que se abre, así que las asignaciones creadas desde el dashboard siempre son slot-específicas. La detección de idempotencia también incluye weekday+time para permitir al mismo profesor estar en distintos slots del mismo grupo.
+
 ### dashboard_change_log — reversibility
 
 | `change_type` | Reversible | Notes |

@@ -18,10 +18,12 @@ import {
   removePermanentAssignment,
   searchWorkersForAssignment,
 } from '@/lib/actions/sessions-dashboard'
+import type { SlotRef } from '@/lib/data/schools'
 
 interface Props {
   group: { id: string; name: string }
   sessionDate?: string
+  slotRef?: SlotRef
   onClose: () => void
 }
 
@@ -39,7 +41,7 @@ type WorkerItem = {
   conflict: boolean
 }
 
-export function PermanentAssignmentDialog({ group, sessionDate, onClose }: Props) {
+export function PermanentAssignmentDialog({ group, sessionDate, slotRef, onClose }: Props) {
   const t = useTranslations('sessionsDashboard')
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -57,7 +59,7 @@ export function PermanentAssignmentDialog({ group, sessionDate, onClose }: Props
     setError(null)
     try {
       const [currentData, availableData] = await Promise.all([
-        getGroupPermanentAssignments(group.id, sessionDate),
+        getGroupPermanentAssignments(group.id, sessionDate, slotRef),
         searchWorkersForAssignment('', group.id, sessionDate),
       ])
       setCurrent(currentData)
@@ -77,7 +79,7 @@ export function PermanentAssignmentDialog({ group, sessionDate, onClose }: Props
     setError(null)
     startTransition(async () => {
       try {
-        const result = await addPermanentAssignment(group.id, worker.id, false, sessionDate)
+        const result = await addPermanentAssignment(group.id, worker.id, false, sessionDate, slotRef)
         if (result.manualConflicts > 0) {
           setManualConflicts(result.manualConflicts)
           setPendingAdd(worker)
@@ -96,7 +98,7 @@ export function PermanentAssignmentDialog({ group, sessionDate, onClose }: Props
     setError(null)
     startTransition(async () => {
       try {
-        await addPermanentAssignment(group.id, pendingAdd.id, true, sessionDate)
+        await addPermanentAssignment(group.id, pendingAdd.id, true, sessionDate, slotRef)
         setManualConflicts(0)
         setPendingAdd(null)
         await loadData()

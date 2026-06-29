@@ -17,6 +17,7 @@ export interface GroupTeacher {
 export interface Group {
   id: string
   name: string
+  age_range: string | null
   school_id: string
   school_year_id: string | null
   school_year_name: string | null
@@ -48,6 +49,7 @@ type RawSchoolYear = { name: string } | null
 type RawGroup = {
   id: string
   name: string
+  age_range: string | null
   is_active: boolean
   school_year_id: string | null
   school_years: RawSchoolYear
@@ -86,6 +88,7 @@ function transformSchools(raw: RawSchool[]): School[] {
       return {
         id: g.id,
         name: g.name,
+        age_range: g.age_range ?? null,
         school_id: school.id,
         school_year_id: g.school_year_id,
         school_year_name: schoolYear ? schoolYear.name : null,
@@ -111,7 +114,7 @@ export async function getSchoolsWithGroups(): Promise<School[]> {
   const { data, error } = await supabase
     .from('schools')
     .select(
-      'id, name, team_id, teams(id, name), groups(id, name, is_active, school_year_id, school_years(name), group_enrollments(student_id, is_active), group_schedule(weekday, start_time, end_time), group_assignments(end_date, workers(id, first_name, last_name)))'
+      'id, name, team_id, teams(id, name), groups(id, name, age_range, is_active, school_year_id, school_years(name), group_enrollments(student_id, is_active), group_schedule(weekday, start_time, end_time), group_assignments(end_date, workers(id, first_name, last_name)))'
     )
     .eq('is_active', true)
     .order('name')
@@ -162,6 +165,7 @@ export interface StaffingSlot {
   projectId: string | null
   projectName: string | null
   excusedReason: string | null
+  ageRange: string | null
   permanentWorkers: {
     assignmentId: string
     workerId: string
@@ -208,6 +212,7 @@ export async function getWeekStaffing(
     groups: {
       id: string
       name: string
+      age_range: string | null
       is_active: boolean
       group_schedule: { weekday: number; start_time: string; end_time: string; min_teachers_required: number }[]
     }[]
@@ -250,6 +255,9 @@ export async function getWeekStaffing(
     worker_id: string
     start_date: string
     end_date: string | null
+    weekday: number | null
+    slot_start_time: string | null
+    slot_end_time: string | null
     workers: { id: string; first_name: string; last_name: string } | null
   }
 
@@ -257,7 +265,7 @@ export async function getWeekStaffing(
     supabase
       .from('schools')
       .select(
-        'id, name, team_id, teams(id, name), groups(id, name, is_active, group_schedule(weekday, start_time, end_time, min_teachers_required))'
+        'id, name, team_id, teams(id, name), groups(id, name, age_range, is_active, group_schedule(weekday, start_time, end_time, min_teachers_required))'
       )
       .eq('is_active', true)
       .order('name'),
@@ -276,7 +284,7 @@ export async function getWeekStaffing(
       .not('group_id', 'is', null),
     supabase
       .from('group_assignments')
-      .select('id, group_id, worker_id, start_date, end_date, workers(id, first_name, last_name)')
+      .select('id, group_id, worker_id, start_date, end_date, weekday, slot_start_time, slot_end_time, workers(id, first_name, last_name)')
       .eq('type', 'permanent')
       .eq('is_active', true),
   ])
@@ -356,11 +364,15 @@ export async function getWeekStaffing(
         }
 
         const slotPermWorkers = (permByGroupId.get(group.id) ?? [])
-          .filter(
-            (a) =>
-              a.start_date <= slotDateStr &&
-              (a.end_date === null || a.end_date >= slotDateStr)
-          )
+          .filter((a) => {
+            if (a.start_date > slotDateStr) return false
+            if (a.end_date !== null && a.end_date < slotDateStr) return false
+            if (a.weekday !== null && a.weekday !== undefined) {
+              if (a.weekday !== schedSlot.weekday) return false
+              if (a.slot_start_time && a.slot_start_time !== schedSlot.start_time) return false
+            }
+            return true
+          })
           .map((a) => ({
             assignmentId: a.id,
             workerId: a.worker_id,
@@ -386,6 +398,7 @@ export async function getWeekStaffing(
           projectId: session?.project_id ?? null,
           projectName: session?.projects?.name ?? null,
           excusedReason: session?.excused_reason ?? null,
+          ageRange: group.age_range ?? null,
           permanentWorkers: slotPermWorkers,
           teacherChanges: [...allSTAsMap.values()],
         })
@@ -417,6 +430,7 @@ export interface GroupSession {
 export interface GroupAdminDetail {
   id: string
   name: string
+  ageRange: string | null
   schoolId: string
   schoolName: string
   isActive: boolean
@@ -455,6 +469,7 @@ type RawGroupEnrollment = {
 type RawGroupDetail = {
   id: string
   name: string
+  age_range: string | null
   is_active: boolean
   schools: { id: string; name: string } | null
   group_schedule: { weekday: number; start_time: string; end_time: string }[]
@@ -486,7 +501,7 @@ export async function getGroupAdminDetail(
     supabase
       .from('groups')
       .select(
-        `id, name, is_active,
+        `id, name, age_range, is_active,
         schools(id, name),
         group_schedule(weekday, start_time, end_time),
         plannings(id, is_active, project_map_id, project_maps(id, name)),
@@ -595,6 +610,7 @@ export async function getGroupAdminDetail(
   return {
     id: raw.id,
     name: raw.name,
+    ageRange: raw.age_range ?? null,
     schoolId: raw.schools?.id ?? '',
     schoolName: raw.schools?.name ?? '',
     isActive: raw.is_active,

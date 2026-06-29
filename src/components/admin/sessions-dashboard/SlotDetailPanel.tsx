@@ -104,6 +104,7 @@ export function SlotDetailPanel({ slot, workerNames, onClose }: Props) {
       <PermanentAssignmentDialog
         group={{ id: slot.groupId, name: slot.groupName }}
         sessionDate={slot.slotDate}
+        slotRef={{ groupId: slot.groupId, slotDate: slot.slotDate, startTime: slot.startTime, endTime: slot.endTime }}
         onClose={() => {
         router.refresh()
         setPermanentOpen(false)
@@ -129,6 +130,7 @@ export function SlotDetailPanel({ slot, workerNames, onClose }: Props) {
           <div style={{ fontSize: '0.85rem', color: 'var(--muted-foreground)', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
             <span>{slot.schoolName}</span>
             <span>{slot.slotDate}</span>
+            {slot.ageRange && <span>{slot.ageRange}</span>}
             {slot.sessionStatus === 'excused' && slot.excusedReason && (
               <span>{t(`excusedReasons.${slot.excusedReason}` as Parameters<typeof t>[0])}</span>
             )}

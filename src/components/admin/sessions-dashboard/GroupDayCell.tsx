@@ -71,6 +71,12 @@ export function GroupDayCell({ slots, workerNames, onSlotClick }: Props) {
               )}
             </div>
 
+            {slot.ageRange && (
+              <div style={{ fontSize: '0.65rem', color: 'var(--muted-foreground)', marginTop: '0.1rem' }}>
+                {slot.ageRange}
+              </div>
+            )}
+
             {/* Project */}
             {slot.projectName && (
               <div style={{ fontSize: '0.7rem', color: 'var(--muted-foreground)', marginTop: '0.125rem' }}>

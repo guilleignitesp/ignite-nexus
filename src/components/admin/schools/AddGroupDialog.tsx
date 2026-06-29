@@ -55,6 +55,7 @@ export function AddGroupDialog({
   const activeYear = schoolYears.find((y) => y.is_active)
 
   const [name, setName] = useState('')
+  const [ageRange, setAgeRange] = useState('')
   const [schoolId, setSchoolId] = useState(defaultSchoolId)
   const [schoolYearId, setSchoolYearId] = useState(activeYear?.id ?? '')
   const [selectedDays, setSelectedDays] = useState<Record<number, DaySlot>>(buildInitialDays())
@@ -69,6 +70,7 @@ export function AddGroupDialog({
 
   function resetForm() {
     setName('')
+    setAgeRange('')
     setSchoolId(defaultSchoolId)
     setSchoolYearId(activeYear?.id ?? '')
     setSelectedDays(buildInitialDays())
@@ -114,6 +116,7 @@ export function AddGroupDialog({
       try {
         await createGroup({
           name: name.trim(),
+          ageRange: ageRange.trim() || null,
           schoolId,
           schoolYearId: schoolYearId || null,
           schedule,
@@ -139,10 +142,24 @@ export function AddGroupDialog({
               id="group-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder={t('groupNamePlaceholder')}
+              placeholder="ej. Coding, Robotics, Tecno..."
               disabled={isPending}
               required
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="age-range">Edad / Cursos</Label>
+            <Input
+              id="age-range"
+              value={ageRange}
+              onChange={(e) => setAgeRange(e.target.value)}
+              placeholder="ej. 2-5 años, 1º-4º Primaria, ESO..."
+              disabled={isPending}
+            />
+            <p style={{ fontSize: 11, color: 'var(--muted-foreground)', marginTop: 3 }}>
+              Opcional
+            </p>
           </div>
 
           <div className="space-y-1.5">

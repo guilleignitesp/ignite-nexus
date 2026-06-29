@@ -35,3 +35,19 @@ npm run lint     # ESLint
 - Sessions dashboard is **decoupled from sessions** — the staffing grid is built from `group_schedule`, not `sessions`. Use `SlotRef` (not `sessionId`) as input to all staffing mutations.
 - `group_schedule.min_teachers_required` is the **canonical** minimum — not `sessions.min_teachers_required`.
 - All session status values: `'pending' | 'completed' | 'excused'`. Legacy values (`suspended`, `holiday`, `cancelled`, `unknown`) exist only in old DB rows.
+
+## Documentation updates
+
+After completing any task that involves:
+- DB schema changes (new tables, columns, constraints, indexes)
+- New or modified server actions
+- New or modified business logic (staffing rules, session flow, XP system)
+- New UI components or significant component changes
+
+→ Update the relevant `docs/` files before finishing. Specifically:
+- Schema changes → `docs/base-de-datos.md`
+- Action changes → `docs/actions.md`
+- Business logic → `docs/status-system.md`
+- Architecture or component changes → `docs/arquitectura.md` or `docs/ui-components.md`
+
+Do this as the last step of the task, after the build passes.

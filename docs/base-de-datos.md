@@ -85,6 +85,7 @@ Grupos de alumnos dentro de un centro. Cada grupo pertenece a un curso escolar.
 | `school_id` | uuid FK → schools.id | Centro al que pertenece |
 | `school_year_id` | uuid FK → school_years.id | Curso escolar |
 | `name` | text NOT NULL | Nombre del grupo, ej: "Grupo A" |
+| `age_range` | text | Rango de edad del grupo, ej: "8-10 años". Nullable, libre. |
 | `is_active` | boolean NOT NULL default true | — |
 | `created_at` | timestamptz NOT NULL default now() | — |
 
@@ -179,6 +180,9 @@ Asignación de profesores a grupos. Permite rastrear histórico.
 | `type` | text CHECK ('permanent','substitute') default 'permanent' | Permanente o sustitución |
 | `is_active` | boolean NOT NULL default true | — |
 | `created_at` | timestamptz NOT NULL default now() | — |
+| `weekday` | smallint | nullable. CHECK (1..5). Si NULL, la asignación aplica a TODOS los slots del grupo. |
+| `slot_start_time` | time | nullable. Hora de inicio del slot específico. |
+| `slot_end_time` | time | nullable. Hora de fin del slot específico. |
 
 ---
 
@@ -1256,6 +1260,32 @@ group_schedule:
     cuando no había sesión generada o cuando la sesión era de una planificación inactiva.
     Ahora getWeekStaffing y getWorkerAvailability leen este valor directamente.
     updateSlotMinTeachers escribe aquí (y opcionalmente en la sesión si existe).
+```
+
+#### Migración 023 — Asignaciones de profesor por slot específico
+
+```
+group_assignments:
+  ADD COLUMN weekday smallint CHECK (weekday >= 1 AND weekday <= 5)
+  ADD COLUMN slot_start_time time
+  ADD COLUMN slot_end_time time
+  ↳ Permite que un profesor esté asignado solo a uno de los slots semanales de un grupo,
+    no a todos. weekday = NULL significa asignación global (comportamiento anterior).
+    getWeekStaffing filtra en JS: asignaciones globales siempre pasan;
+    las slot-específicas solo si weekday + slot_start_time coinciden con el slot actual.
+    addPermanentAssignment escribe estos campos cuando recibe slotRef.
+    La detección de idempotencia también filtra por weekday + slot_start_time.
+```
+
+#### Migración 024 — Rango de edad por grupo
+
+```
+groups:
+  ADD COLUMN age_range text
+  ↳ Texto libre (nullable) para indicar el rango de edad del grupo, ej: "8-10 años".
+    Visible en SchoolsList, GroupDetailClient, sessions dashboard (GroupDayCell/SlotDetailPanel)
+    y en el área de profesor (GroupCard, página de grupo).
+    Se escribe al crear el grupo desde AddGroupDialog.
 ```
 
 #### Cambios de esquema en tiempo de ejecución (fuera de migraciones numeradas)
